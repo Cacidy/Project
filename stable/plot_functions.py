@@ -2,7 +2,7 @@ import os
 import pandas as pd 
 import matplotlib.pyplot as plt
 import requests
-
+import matplotx as mplx
 
 def return_list():
     """
@@ -36,9 +36,7 @@ def return_list():
     df = df[['name', 'tvl']]
     name_list = df[df['name'].isin(common_chains)]
 
-    # Sort the data to get the top 10 chains by TVL
     name_list = name_list.sort_values(by='tvl', ascending=False).head(11)
-    print(name_list)
     return name_list
 
 
@@ -73,9 +71,8 @@ def plot_chains(data_dict, metric, mode='combined', selected_chain=None):
         output_folder = './results/combined_charts'
         if not os.path.exists(output_folder):
             os.makedirs(output_folder)
-        # save the plot
         
-        plt.savefig(os.path.join(output_folder,f'combined_{metric}_chart.png'))
+        # plt.savefig(os.path.join(output_folder,f'combined_{metric}_chart.png'))
         print(f"combined {metric} has been saved as combined_{metric}_chart.png")
         plt.show()
         plt.close()
@@ -108,7 +105,7 @@ def plot_chains(data_dict, metric, mode='combined', selected_chain=None):
         if not os.path.exists(output_folder):
             os.makedirs(output_folder)
         
-        plt.savefig(os.path.join(output_folder, f'{selected_chain}_{metric}_single_chart.png'))
+        # plt.savefig(os.path.join(output_folder, f'{selected_chain}_{metric}_single_chart.png'))
         print(f"{selected_chain} {metric} has been saved as {selected_chain}_{metric}_single_chart.png")
         plt.show()
         plt.close()
@@ -160,7 +157,172 @@ def plot_chain_zscore(data_dict_all, chain_name, metric, window_size=30, thresho
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
         
-    plt.savefig(os.path.join(output_folder, f'{chain_name}_{metric}_Z.png'))
+    # plt.savefig(os.path.join(output_folder, f'{chain_name}_{metric}_Z.png'))
     print(f"{chain_name} {metric} has been saved {chain_name}_{metric}_Z.png")
     plt.show()
     plt.close()
+    
+    
+def plot_tvl_zscore(data_dict_all, chain_name, window_size=30, threshold=2):
+    """
+    Compute Z score for a single metric of a single chain and plot the anomaly detection chart.
+    单独一个链的tvl'(tvl/price)Zscore以及异常图表绘制。因为其实我们不关心tvl的变化。
+    函数绘制结果包括tvl'、rolling mean、price、anomalies。共三条线。
+    这个函数绘制了近两年的数据。注意输入数据应该是365*2+window_size的长度。
+    Parameters:
+    - data_dict_all (dict): all data of 150 days.
+    - chain_name (str): name of the chain
+    - metric (str): metric type ('fee', 'tvl', 'volume').
+    - window_size (int): size of the rolling window, default 30.
+    - threshold (int): z score threshold, default 2， we can also change it into 3.
+    - include_price (bool): whether to include price data in the plot, default False.
+    """
+    
+    # Ensure required data exists
+    if 'tvl' not in data_dict_all or 'price' not in data_dict_all:
+        print("Missing 'tvl' or 'price' data in the dataset.")
+        return
+
+    # Merge TVL and Price data
+    tvl_df = data_dict_all['tvl'][chain_name].copy().tail(365*2+window_size)
+    price_df = data_dict_all['price'][chain_name].copy().tail(365*2+window_size)
+    merged_df = pd.merge(tvl_df, price_df, on='date', suffixes=('_tvl', '_price'))
+
+    # Compute tvl'
+    # merged_df['tvl_prime'] = merged_df['value_tvl'] / merged_df['value_price'] / 1e6
+    merged_df['tvl_prime'] = merged_df['value_tvl'] / merged_df['value_price']
+
+
+    # Compute rolling statistics for tvl'
+    merged_df['rolling_mean'] = merged_df['tvl_prime'].rolling(window=window_size).mean()
+    merged_df['rolling_std'] = merged_df['tvl_prime'].rolling(window=window_size).std()
+    merged_df['Z_score'] = (merged_df['tvl_prime'] - merged_df['rolling_mean']) / merged_df['rolling_std']
+    merged_df['is_anomaly'] = merged_df['Z_score'].abs() > threshold
+
+    # Select data for the last 365*2 days
+    df_plot = merged_df.tail(365*2)
+
+    # Plot the results
+    plt.style.use('seaborn-v0_8')
+    fig, ax1 = plt.subplots(figsize=(14, 7))
+
+    ax1.plot(df_plot['date'], df_plot['tvl_prime'], color='royalblue', linewidth=2.5, label="TVL'")
+    ax1.plot(df_plot['date'], df_plot['rolling_mean'], color='orange', linestyle='--', linewidth=2, label=f'{window_size}-day Rolling Mean')
+
+    # Mark anomalies
+    anomalies = df_plot[df_plot['is_anomaly']]
+    ax1.scatter(anomalies['date'], anomalies['tvl_prime'], color='red', s=60, edgecolor='black', label='Anomalies', zorder=5)
+
+    # Add secondary y-axis for price
+    ax2 = ax1.twinx()
+    ax2.plot(df_plot['date'], df_plot['value_price'], color='green', linestyle='-', linewidth=2, label='Price')
+    ax2.set_ylabel('Price', fontsize=14, fontweight='bold', color='green')
+    ax2.tick_params(axis='y', labelsize=12, colors='green')
+
+    # Axis labels and formatting
+    ax1.set_xlabel('Date', fontsize=14, fontweight='bold')
+    ax1.set_ylabel("TVL'/Price (in B)", fontsize=14, fontweight='bold')
+    ax1.tick_params(axis='y', labelsize=12)
+    ax1.tick_params(axis='x', rotation=45, labelsize=12)
+    ax1.grid(visible=True, linestyle='--', linewidth=0.5)
+    ax1.legend(loc='upper left', fontsize=12)
+    # Format the left y-axis to show values with 'B'
+    # ax1.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f'{x:.0f}m'))
+    
+    ax2.legend(loc='upper right', fontsize=12)
+
+    # Title
+    plt.title(f"{chain_name} TVL' Over Time with Z-Score Anomalies (Last 2 years)", fontsize=18, fontweight='bold')
+    plt.tight_layout()
+
+    output_folder = './results/z_score_charts'
+    if not os.path.exists(output_folder):
+        os.makedirs(output_folder)
+    
+    # plt.savefig(os.path.join(output_folder, f'{chain_name}_tvl\'.png'))
+    print(f"{chain_name} TVL' Z-Score chart with Price has been saved ({chain_name}_tvl_prime_zscore.png)")
+    plt.show()
+    plt.close()
+    
+    
+def plot_three_metrics(data_dict_all, chain_name, window_size=30, threshold=2):
+    """
+    Plot three metrics (fee, TVL'/Price, and Price) for a given chain on a single figure.
+    The x-axis (date) is shared across all three subplots.
+
+    Parameters:
+    - data_dict_all (dict): Dictionary containing all data.
+    - chain_name (str): The name of the chain to plot.
+    - window_size (int): The window size for the rolling mean and standard deviation.
+    - threshold (int): The Z-score threshold for anomaly detection.
+    """
+    # Check if all required data exists
+    if 'fee' not in data_dict_all or 'tvl' not in data_dict_all or 'price' not in data_dict_all:
+        print("Missing one or more required datasets (fee, tvl, price) in data_dict_all.")
+        return
+
+    if chain_name not in data_dict_all['fee'] or chain_name not in data_dict_all['tvl'] or chain_name not in data_dict_all['price']:
+        print(f"Data for chain {chain_name} is missing in one or more datasets.")
+        return
+
+    # Prepare data
+    fee_df = data_dict_all['fee'][chain_name].copy().tail(365*2+window_size)
+    tvl_df = data_dict_all['tvl'][chain_name].copy().tail(365*2+window_size)
+    price_df = data_dict_all['price'][chain_name].copy().tail(365*2+window_size)
+    
+    # rename the value column to avoid confusion
+    fee_df.rename(columns={'value': 'value_fee'}, inplace=True)
+    tvl_df.rename(columns={'value': 'value_tvl'}, inplace=True)
+    price_df.rename(columns={'value': 'value_price'}, inplace=True)
+
+
+    # Merge all data on the 'date' column
+    merged_df = fee_df.merge(tvl_df, on='date', suffixes=('_fee', '_tvl'))
+    merged_df = merged_df.merge(price_df, on='date')
+
+    # Compute TVL'/Price
+    merged_df['tvl_prime'] = merged_df['value_tvl'] / merged_df['value_price']
+
+    # Compute rolling statistics for tvl'
+    merged_df['rolling_mean'] = merged_df['tvl_prime'].rolling(window=window_size).mean()
+    merged_df['rolling_std'] = merged_df['tvl_prime'].rolling(window=window_size).std()
+    merged_df['Z_score'] = (merged_df['tvl_prime'] - merged_df['rolling_mean']) / merged_df['rolling_std']
+    merged_df['is_anomaly'] = merged_df['Z_score'].abs() > threshold
+
+    # Plot
+    plt.style.use('seaborn-v0_8')
+    fig, axes = plt.subplots(3, 1, figsize=(12, 12), sharex=True, gridspec_kw={'hspace': 0.15})
+
+    # Plot Fee
+    axes[0].plot(merged_df['date'], merged_df['value_fee'], color='blue', linewidth=1.5)
+    axes[0].set_title(f'Fee Over Time', loc='left', fontsize=14, fontweight='bold')
+    axes[0].set_ylabel('Fee', fontsize=12)
+    axes[0].grid(visible=True, linestyle='--', linewidth=0.5)
+
+    # Plot TVL' with anomalies
+    axes[1].plot(merged_df['date'], merged_df['tvl_prime'], color='orange', linewidth=1.5, label="TVL'")
+    axes[1].plot(merged_df['date'], merged_df['rolling_mean'], color='purple', linestyle='--', linewidth=1.5, label=f'{window_size}-day Rolling Mean')
+
+    # Highlight anomalies
+    anomalies = merged_df[merged_df['is_anomaly']]
+    axes[1].scatter(anomalies['date'], anomalies['tvl_prime'], color='red', s=30, edgecolor='black', label='Anomalies', zorder=5)
+
+    axes[1].set_title(f"TVL' Over Time with Anomalies", loc='left', fontsize=14, fontweight='bold')
+    axes[1].set_ylabel("TVL'", fontsize=12)
+    axes[1].legend(loc='upper left', fontsize=10)
+    axes[1].grid(visible=True, linestyle='--', linewidth=0.5)
+
+    # Plot Price
+    axes[2].plot(merged_df['date'], merged_df['value_price'], color='green', linewidth=1.5)
+    axes[2].set_title(f'Price Over Time', loc='left', fontsize=14, fontweight='bold')
+    axes[2].set_xlabel('Date', fontsize=12)
+    axes[2].set_ylabel('Price', fontsize=12)
+    axes[2].grid(visible=True, linestyle='--', linewidth=0.5)
+
+    # Format x-axis
+    for ax in axes:
+        ax.tick_params(axis='x', rotation=45, labelsize=10)
+        ax.tick_params(axis='y', labelsize=10)
+
+    plt.tight_layout()
+    plt.show()
