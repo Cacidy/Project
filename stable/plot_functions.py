@@ -2,7 +2,6 @@ import os
 import pandas as pd 
 import matplotlib.pyplot as plt
 import requests
-import matplotx as mplx
 
 def return_list():
     """
@@ -244,3 +243,130 @@ def plot_tvl_zscore(data_dict_all, chain_name, window_size=30, threshold=2):
     plt.show()
     plt.close()
     
+    
+def plot_three_metrics(data_dict_all, chain_name, window_size=30, threshold=2):
+    """
+    Plot three metrics (fee, TVL, and Price) for a given chain on a single figure.
+    The x-axis (date) is shared across all three subplots.
+
+    Parameters:
+    - data_dict_all (dict): Dictionary containing all data.
+    - chain_name (str): The name of the chain to plot.
+    - window_size (int): Rolling window size for Z-score calculation on TVL'.
+    - threshold (int): Z-score threshold for anomaly detection on TVL'.
+    """
+    # Check if all required data exists
+    if 'fee' not in data_dict_all or 'tvl' not in data_dict_all or 'price' not in data_dict_all:
+        print("Missing one or more required datasets (fee, tvl, price) in data_dict_all.")
+        return
+
+    if chain_name not in data_dict_all['fee'] or chain_name not in data_dict_all['tvl'] or chain_name not in data_dict_all['price']:
+        print(f"Data for chain {chain_name} is missing in one or more datasets.")
+        return
+
+    # Prepare data
+    fee_df = data_dict_all['fee'][chain_name].copy().tail(365*2+window_size)
+    tvl_df = data_dict_all['tvl'][chain_name].copy().tail(365*2+window_size)
+    price_df = data_dict_all['price'][chain_name].copy().tail(365*2+window_size)
+    
+    # rename the value column to avoid confusion
+    fee_df.rename(columns={'value': 'value_fee'}, inplace=True)
+    tvl_df.rename(columns={'value': 'value_tvl'}, inplace=True)
+    price_df.rename(columns={'value': 'value_price'}, inplace=True)
+
+    # Merge all data on the 'date' column
+    merged_df = fee_df.merge(tvl_df, on='date', suffixes=('_fee', '_tvl'))
+    merged_df = merged_df.merge(price_df, on='date')
+
+    # Convert Fee from USD to ETH
+    merged_df['value_fee_eth'] = merged_df['value_fee'] / merged_df['value_price']
+
+    # Compute TVL'/Price
+    merged_df['tvl_prime'] = (merged_df['value_tvl'] / 1e6) / merged_df['value_price']
+
+    # Compute rolling statistics for TVL' and detect anomalies
+    merged_df['rolling_mean'] = merged_df['tvl_prime'].rolling(window=window_size).mean()
+    merged_df['rolling_std'] = merged_df['tvl_prime'].rolling(window=window_size).std()
+    merged_df['Z_score'] = (merged_df['tvl_prime'] - merged_df['rolling_mean']) / merged_df['rolling_std']
+    merged_df['is_anomaly'] = merged_df['Z_score'].abs() > threshold
+
+    # Apply dark background style with deeper color
+    plt.style.use("dark_background")
+
+    for param in ['text.color', 'axes.labelcolor', 'xtick.color', 'ytick.color']:
+        plt.rcParams[param] = '0.8'  # light grey
+
+    for param in ['figure.facecolor', 'axes.facecolor', 'savefig.facecolor']:
+        plt.rcParams[param] = '#1B1B2F'  # deeper dark grey
+
+    colors = [
+        '#08F7FE',  # teal/cyan
+        '#FE53BB',  # pink
+        '#F5D300',  # yellow
+        '#00ff41',  # matrix green
+    ]
+
+    fig, axes = plt.subplots(3, 1, figsize=(12, 12), sharex=True, gridspec_kw={'hspace': 0.4})
+
+    # Plot Fee in ETH
+    axes[0].plot(merged_df['date'], merged_df['value_fee_eth'], color=colors[0], linewidth=1)
+    axes[0].fill_between(merged_df['date'], merged_df['value_fee_eth'], color=colors[0], alpha=0.1)
+    
+    # Adjust the y-axis scale for Fee in ETH
+    fee_min = merged_df['value_fee_eth'].min() * 0.9
+    fee_max = merged_df['value_fee_eth'].max() * 1.1
+    axes[0].set_ylim(fee_min, fee_max)
+    axes[0].yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f'{int(x)} ETH'))
+    
+    axes[0].set_title(f'Fee Over Time', loc='left', fontsize=14, fontweight='bold')
+
+    # Plot TVL' with anomalies
+    axes[1].plot(merged_df['date'], merged_df['tvl_prime'], color=colors[1], linewidth=1, label="TVL'")
+
+    # Highlight anomalies
+    anomalies = merged_df[merged_df['is_anomaly']]
+    axes[1].scatter(anomalies['date'], anomalies['tvl_prime'], color=colors[3], s=30, edgecolor='black', label='Anomalies', zorder=5)
+
+    # Fill the area below TVL'
+    axes[1].fill_between(merged_df['date'], merged_df['tvl_prime'], color=colors[1], alpha=0.1)
+
+    # Adjust the y-axis scale for TVL' and format as millions
+    tvl_min = merged_df['tvl_prime'].min() * 0.9
+    tvl_max = merged_df['tvl_prime'].max() * 1.1
+    axes[1].set_ylim(tvl_min, tvl_max)
+    axes[1].yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f'{x:.1f}M ETH'))
+
+    axes[1].set_title(f"TVL' Over Time with Anomalies", loc='left', fontsize=14, fontweight='bold')
+
+    # Ensure proper alignment with x-axis
+    axes[1].tick_params(axis='x', which='both', bottom=True, top=False, labelbottom=False)
+
+    # Plot Price
+    axes[2].plot(merged_df['date'], merged_df['value_price'], color=colors[2], linewidth=1)
+    axes[2].fill_between(merged_df['date'], merged_df['value_price'], color=colors[2], alpha=0.1)
+
+    # Adjust the y-axis scale for Price
+    price_min = merged_df['value_price'].min() * 0.9
+    price_max = merged_df['value_price'].max() * 1.1
+    axes[2].set_ylim(price_min, price_max)
+    axes[2].yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f'{int(x)} USD'))
+
+    axes[2].set_title(f'Price Over Time', loc='left', fontsize=14, fontweight='bold')
+
+    # Format plots
+    for ax in axes:
+        ax.grid(color='#2A3459')
+        ax.set_xlim([merged_df['date'].iloc[0], merged_df['date'].iloc[-1]])
+        ax.tick_params(axis='x', rotation=45, labelsize=10)
+        ax.set_facecolor('#1B1B2F')
+    
+    output_folder = './results/z_score_charts'
+    if not os.path.exists(output_folder):
+        os.makedirs(output_folder)
+    
+    plt.savefig(os.path.join(output_folder, f'{chain_name}_3.png'))
+    print(f"{chain_name} TVL' Z-Score chart with Price has been saved ({chain_name}_3.png)")
+    
+
+    plt.tight_layout()
+    plt.show()
