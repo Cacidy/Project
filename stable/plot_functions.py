@@ -2,6 +2,8 @@ import os
 import pandas as pd 
 import matplotlib.pyplot as plt
 import requests
+from matplotlib.ticker import FuncFormatter
+
 
 def return_list():
     """
