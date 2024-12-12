@@ -39,6 +39,48 @@ def return_list():
     return name_list
 
 
+def get_token_symbol(chain_name):
+    """
+    Get the token symbol for a given chain name.
+    Args:
+        chain_name: Name of the chain.
+
+    Returns:
+        str: Token symbol for the chain.
+    """
+    chain_to_token_map = {
+        "Ethereum": "ETH",
+        "Solana": "SOL",
+        "Tron": "TRX",
+        "BSC": "BNB",
+        "Bitcoin": "BTC",
+        "Arbitrum": "ARB",
+        "Sui": "SUI",
+        "Avalanche": "AVAX",
+        "Polygon": "MATIC(POL)",
+        "Aptos": "APT"
+    }
+    return chain_to_token_map.get(chain_name, "UNKNOWN")
+
+
+def format_number(value):
+    """
+    Format a number to a human readable format.
+    0-999 -> 0-999
+    1_000-999_999 -> 0.0-999.9K
+    1_000_000-999_999_999 -> 0.0-999.9M
+    1_000_000_000+ -> 0.0-999.9B
+    """
+    if value < 1_000:
+        return f"{int(value)}"
+    elif value < 1_000_000:
+        return f"{value / 1_000:.1f}K"
+    elif value < 1_000_000_000:
+        return f"{value / 1_000_000:.1f}M"
+    else:
+        return f"{value / 1_000_000_000:.1f}B"
+    
+
 def plot_chains(data_dict, metric, mode='combined', selected_chain=None):
     """
     plot data for different chains.(combnied or single)
@@ -108,58 +150,6 @@ def plot_chains(data_dict, metric, mode='combined', selected_chain=None):
         print(f"{selected_chain} {metric} has been saved as {selected_chain}_{metric}_single_chart.png")
         plt.show()
         plt.close()
-        
-        
-def plot_chain_zscore(data_dict_all, chain_name, metric, window_size=30, threshold=2):
-    """
-    compute Z score for a single metric of a single chain and plot the anomaly detection chart.
-    单独一个链的单个指标的Zscore以及异常图表绘制。就一条线。
-
-    Parameters:
-    - data_dict_all (dict): all data of 150 days.
-    - chain_name (str): name of the chain
-    - metric (str): metric type（'fee'、'tvl'、'volume'）.
-    - window_size (int): size of the rolling window, default 30.
-    - threshold (int): z score threshold, default 2.
-    """
-    df = data_dict_all[metric][chain_name].copy()
-
-    df['rolling_mean'] = df['value'].rolling(window=window_size).mean()
-    df['rolling_std'] = df['value'].rolling(window=window_size).std()
-
-    df['z_score'] = (df['value'] - df['rolling_mean']) / df['rolling_std']
-
-    df['is_anomaly'] = df['z_score'].abs() > threshold
-
-    df_plot = df.tail(365*2)
-
-    plt.style.use('seaborn-v0_8')
-    plt.figure(figsize=(14, 7))
-
-    plt.plot(df_plot['date'], df_plot['value'], color='royalblue', linewidth=2.5, label='Value')
-
-    plt.plot(df_plot['date'], df_plot['rolling_mean'], color='orange', linestyle='--', linewidth=2, label=f'{window_size}-day Rolling Mean')
-
-    anomalies = df_plot[df_plot['is_anomaly']]
-    plt.scatter(anomalies['date'], anomalies['value'], color='red', s=60, edgecolor='black', label='Anomalies', zorder=5)
-
-    plt.xlabel('Date', fontsize=14, fontweight='bold')
-    plt.ylabel(f'{metric.capitalize()} Value', fontsize=14, fontweight='bold')
-    plt.title(f'{chain_name} {metric.capitalize()} Over Time with Z-Score Anomalies (Last 120 Days)', fontsize=18, fontweight='bold')
-    plt.xticks(rotation=45, fontsize=12)
-    plt.yticks(fontsize=12)
-    plt.grid(visible=True, linestyle='--', linewidth=0.5)
-    plt.legend(loc='best', fontsize=12)
-    plt.tight_layout()
-    
-    output_folder = './results/z_score_charts'
-    if not os.path.exists(output_folder):
-        os.makedirs(output_folder)
-        
-    # plt.savefig(os.path.join(output_folder, f'{chain_name}_{metric}_Z.png'))
-    print(f"{chain_name} {metric} has been saved {chain_name}_{metric}_Z.png")
-    plt.show()
-    plt.close()
     
     
 def plot_tvl_zscore(data_dict_all, chain_name, window_size=30, threshold=2):
@@ -369,4 +359,73 @@ def plot_three_metrics(data_dict_all, chain_name, window_size=30, threshold=2):
     
 
     plt.tight_layout()
+    plt.show()
+    
+
+def plot_metric_chart(data_dict_all, chain_name, metric):
+    """
+    Plot a single metric for a given chain Mainly used for debugging purposes.
+    Args:
+        data_dict_all: Dictionary containing all data.
+        chain_name: The name of the chain to plot.
+        metric: The metric to plot (fee, tvl, price).
+    """
+    plt.style.use("dark_background")
+    plt.rcParams.update({
+        'text.color': '0.8',
+        'axes.labelcolor': '0.8',
+        'xtick.color': '0.8',
+        'ytick.color': '0.8',
+        'figure.facecolor': '#1B1B2F',
+        'axes.facecolor': '#1B1B2F',
+        'savefig.facecolor': '#1B1B2F'
+    })
+    color = '#08F7FE'  
+    token_symbol = get_token_symbol(chain_name)
+    
+    # Increase the width of the figure
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 12))
+    
+    fee_data = data_dict_all['fee'][chain_name]
+    price_data = data_dict_all['price'][chain_name]
+    
+    # Plot fee
+    ax1.plot(fee_data['date'], fee_data['value'], color=color, linewidth=1)
+    ax1.fill_between(fee_data['date'], fee_data['value'], color=color, alpha=0.1)
+    
+    metric_min = fee_data['value'].min() * 0.9
+    metric_max = fee_data['value'].max() * 1.1
+    ax1.set_ylim(metric_min, metric_max)
+    ax1.yaxis.set_major_formatter(FuncFormatter(lambda x, _: f'{format_number(x)} USD'))    
+
+
+    ax1.set_title(f'Fee of {chain_name}', loc='left', fontsize=14, fontweight='bold')
+    ax1.set_xlabel("Date", fontsize=12)
+    ax1.set_ylabel("Fee", fontsize=12)
+    
+    ax1.tick_params(axis='x', rotation=45, labelsize=10)
+    ax1.grid(color='#2A3459')
+    
+    # Merge fee and price data on date
+    merged_data = pd.merge(fee_data, price_data, on='date', suffixes=('_fee', '_price'))
+    
+    # Calculate fee in coin
+    merged_data['fee_in_coin'] = merged_data['value_fee'] / merged_data['value_price']
+    
+    # Plot fee in coin
+    ax2.plot(merged_data['date'], merged_data['fee_in_coin'], color=color, linewidth=1)
+    ax2.fill_between(merged_data['date'], merged_data['fee_in_coin'], color=color, alpha=0.1)
+    
+    metric_min = merged_data['fee_in_coin'].min() * 0.9
+    metric_max = merged_data['fee_in_coin'].max() * 1.1
+    ax2.set_ylim(metric_min, metric_max)
+    ax2.yaxis.set_major_formatter(FuncFormatter(lambda x, _: f'{format_number(x)} {token_symbol}'))    
+
+    ax2.set_title(f'Fee of {chain_name} in Coin', loc='left', fontsize=14, fontweight='bold')
+    ax2.set_xlabel("Date", fontsize=12)
+    ax2.set_ylabel("Fee in Coin", fontsize=12)
+    
+    ax2.tick_params(axis='x', rotation=45, labelsize=10)
+    ax2.grid(color='#2A3459')
+    
     plt.show()
