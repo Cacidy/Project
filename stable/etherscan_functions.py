@@ -365,6 +365,11 @@ def get_block_number_by_timestamp(timestamp: int, closest: str = "before", chain
 # Pro: Get Daily Uncle Block Count and Rewards 
 
 # ******************************************** Logs *******************************************************
+# Get Event Logs by Address
+# Get Event Logs by Topics
+# Get Event Logs by Address filtered by Topics
+
+# ******************************************** Geth/Parity Proxy *******************************************************
 
 # eth_blockNumber
 # eth_getBlockByNumber
@@ -476,3 +481,13 @@ def get_code(address: str, chain_id: int = 1, tag: str = "latest") -> str:
 # eth_getStorageAt
 # eth_gasPrice
 # eth_estimateGas
+
+# ******************************************** Tokens *******************************************************
+
+# ******************************************** Gas Tracker *******************************************************
+
+# ******************************************** Stats *******************************************************
+
+# ******************************************** Chain Specific *******************************************************
+
+# ******************************************** Usage *******************************************************
