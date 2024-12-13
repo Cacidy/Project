@@ -1,5 +1,6 @@
 import requests
 import json
+import pandas as pd
 from typing import List, Dict, Any
 
 API_KEY = "VQAIR728IM4Z8RZKPYBR4ESM5I3WBZK2C1"
@@ -195,7 +196,7 @@ def get_erc20_transfers(
     if response.status_code == 200:
         data = response.json()
         if data.get("status") == "1":
-            return data.get("result", []) 
+            return pd.DataFrame(data.get("result", []))
         else:
             raise ValueError(f"Request failed: {data.get('message')}")
     else:
@@ -490,4 +491,3 @@ def get_code(address: str, chain_id: int = 1, tag: str = "latest") -> str:
 
 # ******************************************** Chain Specific *******************************************************
 
-# ******************************************** Usage *******************************************************
