@@ -1,5 +1,7 @@
 import requests
-import json
+import pytz
+import pandas as pd
+from datetime import datetime
 import pandas as pd
 from typing import List, Dict, Any
 
@@ -9,6 +11,125 @@ BASE_URL = "https://api.etherscan.io/v2/api"
 # for more chain id, visit https://docs.etherscan.io/etherscan-v2/getting-started/supported-chains
 # for more endpoints, visit https://forms.blockscan.com/public/grid/3E9QiN00NLhCQVibiP3Z-Bpqhmd7zGXsgapEKJupxiI
 # 封装为函数是因为url以及response这种变量命很容易重复，导致代码不易维护
+# ******************************************** Useful part *******************************************************
+def get_erc20_transfers(
+    address: str,
+    contract_address: str = None,
+    startblock: int = 0,
+    endblock: int = 99999999,
+    page: int = 1,
+    offset: int = 100,
+    sort: str = "asc",
+    chain_id: int = 1
+) -> List[Dict[str, Any]]:
+    """
+    Fetch the list of ERC-20 token transfer events for a specific address.
+    ERC-20 transfers from an address, specify the address parameter
+    ERC-20 transfers from a contract address, specify the contract address parameter
+    ERC-20 transfers from an address filtered by a token contract, specify both address and contract address parameters.
+    
+    :param address: the string representing the address to check for balance
+    :param contract_address: Optional. the string representing the token contract address to check for balance
+    :param startblock: the integer block number to start searching for transactions
+    :param endblock: the integer block number to stop searching for transactions
+    :param page: the integer page number, if pagination is enabled
+    :param offset: the number of transactions displayed per page.
+    :param sort: sorting preference, use 'asc' to sort by ascending and 'desc' to sort by descending
+    :param chain_id: The blockchain network ID. Default is 1 (Ethereum Mainnet).
+    :return: A list of dictionaries containing the ERC-20 token transfer events.
+    """
+    url = (
+        f"{BASE_URL}?chainid={chain_id}&module=account&action=tokentx"
+        f"&address={address}&startblock={startblock}&endblock={endblock}"
+        f"&page={page}&offset={offset}&sort={sort}&apikey={API_KEY}"
+    )
+    
+    if contract_address:
+        url += f"&contractaddress={contract_address}"
+    response = requests.get(url)
+
+    if response.status_code == 200:
+        data = response.json()
+        if data.get("status") == "1":
+            return pd.DataFrame(data.get("result", []))
+        else:
+            raise ValueError(f"Request failed: {data.get('message')}")
+    else:
+        raise ConnectionError(f"Request failed, code: {response.status_code}")
+
+
+def get_block_number_by_timestamp(timestamp: int, closest: str = "before", chain_id: int = 1) -> int:
+    """
+    Returns the block number that was mined at a certain timestamp.
+
+    :param timestamp: The integer representing the Unix timestamp in seconds.
+    :param closest: the closest available block to the provided timestamp, either before or after.
+    :param chain_id: The blockchain network ID. Default is 1 (Ethereum Mainnet).
+    :return: The block number closest to the provided timestamp.
+    """
+    url = f"{BASE_URL}?chainid={chain_id}&module=block&action=getblocknobytime&timestamp={timestamp}&closest={closest}&apikey={API_KEY}"
+    
+    response = requests.get(url)
+    if response.status_code == 200:
+        data = response.json()
+        if data.get("status") == "1":
+            return int(data.get("result"))
+        else:
+            raise ValueError(f"Request failed: {data.get('message')}")
+    else:
+        raise ConnectionError(f"Request failed, code: {response.status_code}")
+
+
+def get_block_numbers_by_date(
+    start_date: str,
+    end_date: str,
+    closest: str = "before",
+    include_all: bool = False,
+) -> List[int]:
+    """
+    Returns block numbers for a specified date range.
+
+    :param start_date: Start date in 'YYYY-MM-DD' format.
+    :param end_date: End date in 'YYYY-MM-DD' format.
+    :param closest: 'before' or 'after', to find the closest block.
+    :param include_all: If True, returns all block numbers in the range. 
+                        If False, only returns the start and end block numbers.
+    :return: A list of block numbers. 
+             If include_all is True, includes all blocks in the range. 
+             Otherwise, includes only the start and end block numbers.
+
+    :raises ValueError: If input dates are invalid or API responses indicate failure.
+    :raises ConnectionError: If the HTTP request fails.
+    """
+    # Convert input time (Singapore Time) to UTC
+    singapore_tz = pytz.timezone("Asia/Singapore")
+    utc_tz = pytz.utc
+
+    try:
+        # Parse input dates and localize to Singapore timezone
+        start_dt_sgt = singapore_tz.localize(datetime.strptime(start_date, "%Y-%m-%d %H:%M"))
+        end_dt_sgt = singapore_tz.localize(datetime.strptime(end_date, "%Y-%m-%d %H:%M"))
+    except ValueError:
+        raise ValueError("Dates must be in 'YYYY-MM-DD HH:MM' format.")
+
+    # Convert Singapore time to UTC
+    start_timestamp = int(start_dt_sgt.astimezone(utc_tz).timestamp())
+    end_timestamp = int(end_dt_sgt.astimezone(utc_tz).timestamp())
+
+    if start_timestamp >= end_timestamp:
+        raise ValueError("Start date must be earlier than end date.")
+
+    # Fetch block numbers using timestamps
+    start_block = get_block_number_by_timestamp(timestamp=start_timestamp, closest="before")
+    end_block = get_block_number_by_timestamp(timestamp=end_timestamp, closest="after")
+    # combine the use of 'before' and 'after' to get a wider range of blocks
+
+
+    # Return range or just start and end block numbers
+    if include_all:
+        return list(range(start_block, end_block + 1))
+    return [start_block, end_block]
+
 
 # ******************************************** Accounts *******************************************************
 
@@ -155,54 +276,6 @@ def get_internal_transactions(
 
 # Get 'Internal Transactions' by Transaction Hash
 # Get "Internal Transactions" by Block Range
-
-
-def get_erc20_transfers(
-    address: str,
-    contract_address: str = None,
-    startblock: int = 0,
-    endblock: int = 99999999,
-    page: int = 1,
-    offset: int = 100,
-    sort: str = "asc",
-    chain_id: int = 1
-) -> List[Dict[str, Any]]:
-    """
-    Fetch the list of ERC-20 token transfer events for a specific address.
-    ERC-20 transfers from an address, specify the address parameter
-    ERC-20 transfers from a contract address, specify the contract address parameter
-    ERC-20 transfers from an address filtered by a token contract, specify both address and contract address parameters.
-    
-    :param address: the string representing the address to check for balance
-    :param contract_address: Optional. the string representing the token contract address to check for balance
-    :param startblock: the integer block number to start searching for transactions
-    :param endblock: the integer block number to stop searching for transactions
-    :param page: the integer page number, if pagination is enabled
-    :param offset: the number of transactions displayed per page.
-    :param sort: sorting preference, use 'asc' to sort by ascending and 'desc' to sort by descending
-    :param chain_id: The blockchain network ID. Default is 1 (Ethereum Mainnet).
-    :return: A list of dictionaries containing the ERC-20 token transfer events.
-    """
-    url = (
-        f"{BASE_URL}?chainid={chain_id}&module=account&action=tokentx"
-        f"&address={address}&startblock={startblock}&endblock={endblock}"
-        f"&page={page}&offset={offset}&sort={sort}&apikey={API_KEY}"
-    )
-    
-    if contract_address:
-        url += f"&contractaddress={contract_address}"
-    response = requests.get(url)
-
-    if response.status_code == 200:
-        data = response.json()
-        if data.get("status") == "1":
-            return pd.DataFrame(data.get("result", []))
-        else:
-            raise ValueError(f"Request failed: {data.get('message')}")
-    else:
-        raise ConnectionError(f"Request failed, code: {response.status_code}")
-
-
 # Get a list of 'ERC721 - Token Transfer Events' by Address
 # Get a list of 'ERC1155 - Token Transfer Events' by Address
 # Get list of Blocks Validated by Address
@@ -337,28 +410,6 @@ def get_block_and_uncle_rewards(block_number: int, chain_id: int = 1) -> Dict[st
         raise ConnectionError(f"Request failed, code: {response.status_code}")
 
 # Get Estimated Block Countdown Time by BlockNo
-
-def get_block_number_by_timestamp(timestamp: int, closest: str = "before", chain_id: int = 1) -> int:
-    """
-    Returns the block number that was mined at a certain timestamp.
-
-    :param timestamp: The integer representing the Unix timestamp in seconds.
-    :param closest: the closest available block to the provided timestamp, either before or after.
-    :param chain_id: The blockchain network ID. Default is 1 (Ethereum Mainnet).
-    :return: The block number closest to the provided timestamp.
-    """
-    url = f"{BASE_URL}?chainid={chain_id}&module=block&action=getblocknobytime&timestamp={timestamp}&closest={closest}&apikey={API_KEY}"
-    
-    response = requests.get(url)
-    if response.status_code == 200:
-        data = response.json()
-        if data.get("status") == "1":
-            return int(data.get("result"))
-        else:
-            raise ValueError(f"Request failed: {data.get('message')}")
-    else:
-        raise ConnectionError(f"Request failed, code: {response.status_code}")
-
 # Pro: Get Daily Average Block Size 
 # Pro: Get Daily Block Count and Rewards 
 # Pro: Get Daily Block Rewards
