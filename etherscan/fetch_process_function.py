@@ -64,6 +64,8 @@ def fetch_erc20_transfers(address: str, start_block: int, end_block: int, offset
 def process_and_save_transfers(transfers_df: pd.DataFrame, output_file: str) -> None:
     """
     Process ERC20 transfers DataFrame and save to a CSV file.
+    :param transfers_df: DataFrame containing ERC20 transfer data.
+    :param output_file: Path to save the processed data.
     """
     if not transfers_df.empty:
         transfers_df['dateTime'] = pd.to_datetime(
@@ -160,7 +162,12 @@ def save_partial_transfers(transfers_df: pd.DataFrame, output_file: str) -> None
         filtered_transaction_data.to_csv(output_file, index=False)
 
 
-def highlight_three_records(grouped_df, data):
+def highlight_three_records(grouped_df: pd.core.groupby.DataFrameGroupBy, data: pd.DataFrame) -> pd.DataFrame:
+    """
+    Highlight and remove transactions with 3 records in the same hash.
+    : param grouped_df: Grouped DataFrame by transaction hash.
+    : param data: Original DataFrame containing transaction data.
+    """
     matched_hashes = []
 
     for tx_hash, group in grouped_df:
@@ -177,6 +184,9 @@ def highlight_three_records(grouped_df, data):
 def process_duplicate_hashes(duplicate_hashes: pd.DataFrame, address: str, base_tokens: set) -> pd.DataFrame:
     """
     Process duplicate transaction hashes to identify BUY/SELL actions.
+    : param duplicate_hashes: DataFrame containing duplicate transaction hashes.
+    : param address: Ethereum address to filter transactions for.
+    : param base_tokens: Set of base tokens to filter transactions for.
     """
     output_records = []
     for hash_val, group in duplicate_hashes.groupby('hash'):
@@ -202,6 +212,9 @@ def process_duplicate_hashes(duplicate_hashes: pd.DataFrame, address: str, base_
 def find_matched_transactions(transaction_data: pd.DataFrame, address: str, base_tokens: set) -> (pd.DataFrame, list):
     """
     Find and process matched BUY/SELL transactions.
+    : param transaction_data: DataFrame containing transaction data.
+    : param address: Ethereum address to filter transactions for.
+    : param base_tokens: Set of base tokens to filter transactions for.
     """
     matched_records = []
     matched_indices = []
@@ -240,6 +253,9 @@ def find_matched_transactions(transaction_data: pd.DataFrame, address: str, base
 def find_single_transactions(transaction_data: pd.DataFrame, address: str, base_tokens: set) -> pd.DataFrame:
     """
     Process single BUY/SELL transactions.
+    : param transaction_data: DataFrame containing transaction data.
+    : param address: Ethereum address to filter transactions for.
+    : param base_tokens: Set of base tokens to filter transactions for.
     """
     single_records = []
     for _, row in transaction_data.iterrows():
@@ -261,6 +277,10 @@ def find_single_transactions(transaction_data: pd.DataFrame, address: str, base_
 def process_transactions(transaction_data: pd.DataFrame, output_file: str, address: str, base_tokens: set):
     """
     Process transaction data and save the final result to a CSV file.
+    : param transaction_data: DataFrame containing transaction data.
+    : param output_file: Path to save the processed data.
+    : param address: Ethereum address to filter transactions for.
+    : param base_tokens: Set of base tokens to filter transactions for.
     """
     address = address.lower()
     save_partial_transfers(transaction_data, output_file)
