@@ -52,7 +52,7 @@ def get_erc20_transfers(
 
     if response.status_code == 200:
         data = response.json()
-        print(data)
+        # print(data)
         if data.get("status") == "1":
             return pd.DataFrame(data.get("result", []))
         else:
@@ -444,7 +444,11 @@ def get_logs(address: str, from_block: int, to_block: int, page: int = 1, offset
     # Handle the response
     if response.status_code == 200:
         data = response.json()
+        file_name = os.path.join(r"./result", "logs.json")
         if data.get("status") == "1":
+            file_name = os.path.join(r"./result", "logs.json")
+            with open(file_name, "w", encoding="utf-8") as file:
+                json.dump(data, file, indent=4, ensure_ascii=False)
             return data.get("result", [])
         else:
             raise ValueError(f"Request failed: {data.get('message')}")

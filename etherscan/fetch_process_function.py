@@ -73,8 +73,17 @@ def process_and_save_transfers(transfers_df: pd.DataFrame, output_file: str) -> 
         transfers_df['dateTime'] = pd.to_datetime(
             pd.to_numeric(transfers_df['timeStamp'], errors='coerce'), unit='s', utc=True
         ).dt.strftime('%Y-%m-%d %H:%M:%S')
+        
+        transfers_df.insert(
+            transfers_df.columns.get_loc('value') + 1,
+            'ActualValue',
+            pd.to_numeric(transfers_df['value'], errors='coerce') / 
+            (10 ** pd.to_numeric(transfers_df['tokenDecimal'], errors='coerce'))
+        )
+        
         cols = ['dateTime'] + [col for col in transfers_df.columns if col != 'dateTime']
         transfers_df = transfers_df[cols]
+        
         output_file = os.path.join(output_file, 'erc20_transfers.csv')
         transfers_df.to_csv(output_file, index=False)
         logger.info(f"Data successfully saved to {output_file}")
