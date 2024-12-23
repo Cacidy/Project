@@ -1,5 +1,7 @@
 import requests
 import pytz
+import json
+import os
 import pandas as pd
 from datetime import datetime
 import pandas as pd
@@ -18,7 +20,7 @@ def get_erc20_transfers(
     startblock: int = 0,
     endblock: int = 99999999,
     page: int = 1,
-    offset: int = 100,
+    offset: int = 1000,
     sort: str = "asc",
     chain_id: int = 1
 ) -> List[Dict[str, Any]]:
@@ -50,6 +52,7 @@ def get_erc20_transfers(
 
     if response.status_code == 200:
         data = response.json()
+        print(data)
         if data.get("status") == "1":
             return pd.DataFrame(data.get("result", []))
         else:
@@ -417,9 +420,116 @@ def get_block_and_uncle_rewards(block_number: int, chain_id: int = 1) -> Dict[st
 # Pro: Get Daily Uncle Block Count and Rewards 
 
 # ******************************************** Logs *******************************************************
-# Get Event Logs by Address
-# Get Event Logs by Topics
-# Get Event Logs by Address filtered by Topics
+def get_logs(address: str, from_block: int, to_block: int, page: int = 1, offset: int = 1000, chain_id: int = 1) -> List[Dict[str, Any]]:
+    """
+    Fetch logs for a specific contract address within a block range.
+
+    :param address: the string representing the address to check for logs
+    :param from_block: the integer block number to start searching for logs eg. 12878196
+    :param to_block: the integer block number to stop searching for logs eg. 12879196
+    :param page: the integer page number, if pagination is enabled
+    :param offset: the number of transactions displayed per page limited to 1000 records per query, 
+                    use the page parameter for subsequent records
+    :param chain_id: The blockchain network ID. Default is 1 (Ethereum Mainnet).
+    :return: A list of logs as dictionaries.
+    """
+    # Construct the request URL
+    url = (f"{BASE_URL}?chainid={chain_id}&module=logs&action=getLogs"
+           f"&address={address}&fromBlock={from_block}&toBlock={to_block}"
+           f"&page={page}&offset={offset}&apikey={API_KEY}")
+    
+    # Send the GET request
+    response = requests.get(url)
+    
+    # Handle the response
+    if response.status_code == 200:
+        data = response.json()
+        if data.get("status") == "1":
+            return data.get("result", [])
+        else:
+            raise ValueError(f"Request failed: {data.get('message')}")
+    else:
+        raise ConnectionError(f"Request failed, code: {response.status_code}")
+
+
+def get_logs_by_topics(from_block: int, to_block: int, topic0: str, topic1: str, topic0_1_opr: str = "and", page: int = 1, offset: int = 1000, chain_id: int = 1) -> List[Dict[str, Any]]:
+    """
+    Fetch logs within a block range filtered by topics.
+
+    :param from_block: The starting block number (inclusive).
+    :param to_block: The ending block number (inclusive).
+    :param topic: the topic numbers to search for limited totopic0, topic1, topic2, topic3
+    :param topicOperator: the topic operator when multiple topic combinations are used limited to and or or
+    :param page: The page number for pagination. Default is 1.
+    :param offset: the number of transactions displayed per page limited to 1000 records per query, use the page parameter for subsequent records
+    :param chain_id: The blockchain network ID. Default is 1 (Ethereum Mainnet).
+    :return: A list of logs as dictionaries.
+    """
+    # Construct the request URL
+    url = (f"{BASE_URL}?chainid={chain_id}&module=logs&action=getLogs"
+           f"&fromBlock={from_block}&toBlock={to_block}&topic0={topic0}"
+           f"&topic0_1_opr={topic0_1_opr}&topic1={topic1}&page={page}"
+           f"&offset={offset}&apikey={API_KEY}")
+    
+    # Send the GET request
+    response = requests.get(url)
+    
+    # Handle the response
+    if response.status_code == 200:
+        data = response.json()
+        if data.get("status") == "1":
+            return data.get("result", [])
+        else:
+            raise ValueError(f"Request failed: {data.get('message')}")
+    else:
+        raise ConnectionError(f"Request failed, code: {response.status_code}")
+
+
+def get_logs_with_address_and_topics(
+    from_block: int,
+    to_block: int,
+    address: str,
+    topic0: str,
+    topic1: str,
+    topic0_1_opr: str = "and",
+    page: int = 1,
+    offset: int = 1000,
+    chain_id: int = 1
+) -> List[Dict[str, Any]]:
+    """
+    Fetch logs for a specific contract address within a block range filtered by topics.
+
+    :param from_block: The starting block number (inclusive).
+    :param to_block: The ending block number (inclusive).
+    :param address: the string representing the address to check for logs
+    :param topic: the topic numbers to search for limited totopic0, topic1, topic2, topic3
+    :param topicOperator: the topic operator when multiple topic combinations are used limited to 'and' or 'or'
+    :param page: The page number for pagination. Default is 1.
+    :param offset: the number of transactions displayed per page limited to 1000 records per query,
+                    use the page parameter for subsequent records
+    :param chain_id: The blockchain network ID. Default is 1 (Ethereum Mainnet).
+    :return: A list of logs as dictionaries.
+    """
+    # Construct the request URL
+    url = (
+        f"{BASE_URL}?chainid={chain_id}&module=logs&action=getLogs"
+        f"&fromBlock={from_block}&toBlock={to_block}&address={address}"
+        f"&topic0={topic0}&topic0_1_opr={topic0_1_opr}&topic1={topic1}"
+        f"&page={page}&offset={offset}&apikey={API_KEY}"
+    )
+    
+    # Send the GET request
+    response = requests.get(url)
+    
+    # Handle the response
+    if response.status_code == 200:
+        data = response.json()
+        if data.get("status") == "1":
+            return data.get("result", [])
+        else:
+            raise ValueError(f"Request failed: {data.get('message')}")
+    else:
+        raise ConnectionError(f"Request failed, code: {response.status_code}")
 
 # ******************************************** Geth/Parity Proxy *******************************************************
 

@@ -1,13 +1,15 @@
 import os
+import re
 import logging
 import pandas as pd
+import matplotlib.pyplot as plt
 from etherscan_functions import get_erc20_transfers, get_block_numbers_by_date
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger()
 
 
-def fetch_erc20_transfers(address: str, start_block: int, end_block: int, offset: int = 100) -> pd.DataFrame:
+def fetch_erc20_transfers(address: str, start_block: int, end_block: int, offset: int = 1000) -> pd.DataFrame:
     """
     Fetch ERC20 token transfer data and process it into a DataFrame.
     :param address: Contract address you decide to fetch the data from.
@@ -74,7 +76,7 @@ def process_and_save_transfers(transfers_df: pd.DataFrame, output_file: str) -> 
         cols = ['dateTime'] + [col for col in transfers_df.columns if col != 'dateTime']
         transfers_df = transfers_df[cols]
         output_file = os.path.join(output_file, 'erc20_transfers.csv')
-        # transfers_df.to_csv(output_file, index=False)
+        transfers_df.to_csv(output_file, index=False)
         logger.info(f"Data successfully saved to {output_file}")
     else:
         logger.warning("No valid transfers to save. DataFrame is empty.")
@@ -84,7 +86,8 @@ def fetch_and_save_erc20_transfers(
     address: str,
     start_date: str,
     end_date: str,
-    output_file: str
+    output_file: str,
+    offset: int = 1000
 ) -> pd.DataFrame:
     """
     Fetch block numbers, retrieve ERC20 transfers, and save the processed data in one step.
@@ -124,7 +127,8 @@ def fetch_and_save_erc20_transfers(
         transfers_df = fetch_erc20_transfers(
             address=address,
             start_block=start_block,
-            end_block=end_block
+            end_block=end_block,
+            offset=offset
         )
 
         # Step 3: Save processed transfers
@@ -274,7 +278,7 @@ def find_single_transactions(transaction_data: pd.DataFrame, address: str, base_
     return pd.DataFrame(single_records)
 
 
-def process_transactions(transaction_data: pd.DataFrame, output_file: str, address: str, base_tokens: set):
+def process_transactions(transaction_data: pd.DataFrame, output_file: str, address: str, base_tokens: set) -> pd.DataFrame:
     """
     Process transaction data and save the final result to a CSV file.
     : param transaction_data: DataFrame containing transaction data.
@@ -319,6 +323,71 @@ def process_transactions(transaction_data: pd.DataFrame, output_file: str, addre
     if not final_combined_df.empty:
         final_combined_df = final_combined_df.sort_values(by='dateTime').reset_index(drop=True)
         # final_combined_df.to_csv(output_file, index=False)
-        print("Formatted Transactions: final part")
-        for record in final_combined_df['formatted_record']:
-            print(record)
+        # print("Formatted Transactions: final part")
+        # for record in final_combined_df['formatted_record']:
+        #     print(record)
+    
+    return final_combined_df
+
+
+def parse_transaction(record: str) -> dict:
+    """
+    Parse a single transaction record to extract transaction details.
+    
+    :param record: A formatted string like '1733794511 W single BUY 25541000000 USDT (at 2024-12-10 01:35:11)'.
+    :return: A dictionary with extracted details.
+    """
+    try:
+        # Extract details using regex
+        match = re.search(r"(\d+)\s+W\s+(\w+)\s+(BUY|SELL)\s+([\d.]+)\s+(\w+)\s+\(at\s+([\d-]+)\s+([\d:]+)\)", record)
+        # 这里有问题哦还有single和‘’的问题
+        if match:
+            return {
+                "timeStamp": int(match.group(1)),
+                "transaction_type": match.group(3),
+                "amount": float(match.group(4)),
+                "token": match.group(5),
+                "dateTime": f"{match.group(6)} {match.group(7)}"
+            }
+        else:
+            return None
+    except Exception as e:
+        print(f"Failed to parse record: {record}. Error: {e}")
+        return None
+
+
+def summarize_and_visualize(final_combined_df: pd.DataFrame, base_tokens: set) -> pd.DataFrame:
+    """
+    Summarize and visualize transaction data for buy/sell records and profit.
+    
+    :param final_combined_df: DataFrame with 'formatted_record' column containing transaction records.
+    :param base_tokens: Set of base tokens to focus on (e.g., {"USDT", "USDC"}).
+    :return: A DataFrame summarizing buy/sell amounts and profit for each token.
+    """
+    # Parse the 'formatted_record' column
+    parsed_data = final_combined_df['formatted_record'].apply(parse_transaction)
+    parsed_df = pd.DataFrame([record for record in parsed_data if record is not None])
+    print(parsed_df)
+
+    if parsed_df.empty:
+        print("No valid transaction records found.")
+        return pd.DataFrame()
+
+    # Filter by base tokens
+    filtered_df = parsed_df[parsed_df['token'].isin(base_tokens)]
+    
+    # Summarize buy/sell records
+    summary = filtered_df.groupby(['token', 'transaction_type']).agg(
+        total_amount=('amount', 'sum')
+    ).unstack(fill_value=0)
+
+    # Calculate profit (SELL - BUY)
+    summary.columns = ['Total Buy', 'Total Sell']
+    summary['Profit'] = summary['Total Sell'] - summary['Total Buy']
+    summary.reset_index(inplace=True)
+
+    # Print the summary as a DataFrame
+    print("\nSummary Table:")
+    print(summary)
+
+    return summary
