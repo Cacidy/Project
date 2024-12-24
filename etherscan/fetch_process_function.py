@@ -214,8 +214,8 @@ def process_duplicate_hashes(duplicate_hashes: pd.DataFrame, address: str, base_
             other_token_value = other_tokens_group['ActualValue'].sum()
             other_token_symbol = other_tokens_group['tokenSymbol'].iloc[0]
 
-            average_price = other_token_value / base_token_value if base_token_value > 0 else 0
-            price_unit = f"{other_token_symbol}/{base_token_symbol}"
+            average_price = base_token_value / other_token_value if other_token_value > 0 else 0
+            price_unit = f"{base_token_symbol}/{other_token_symbol}"
             record = (
                 f"{group['timeStamp'].iloc[0]} W {transaction_type} {other_token_value} {other_token_symbol} "
                 f"of {base_token_value} {base_token_symbol} at avg price {average_price:.6f} "
@@ -265,8 +265,8 @@ def find_matched_transactions(transaction_data: pd.DataFrame, address: str, base
                 other_token_value = other_token['ActualValue']
                 other_token_symbol = other_token['tokenSymbol']
 
-                average_price = other_token_value / base_token_value if base_token_value > 0 else 0
-                price_unit = f"{other_token_symbol}/{base_token_symbol}"
+                average_price = base_token_value / other_token_value if other_token_value > 0 else 0
+                price_unit = f"{base_token_symbol}/{other_token_symbol}"
 
                 record = (
                     f"{current_row['timeStamp']} W {transaction_type} {other_token_value} {other_token_symbol} "
@@ -360,66 +360,3 @@ def process_transactions(transaction_data: pd.DataFrame, output_file: str, addre
             print(record)
     
     return final_combined_df
-
-
-def parse_transaction(record: str) -> dict:
-    """
-    Parse a single transaction record to extract transaction details.
-    
-    :param record: A formatted string like '1733794511 W single BUY 25541000000 USDT (at 2024-12-10 01:35:11)'.
-    :return: A dictionary with extracted details.
-    """
-    try:
-        # Extract details using regex
-        match = re.search(r"(\d+)\s+W\s+(\w+)\s+(BUY|SELL)\s+([\d.]+)\s+(\w+)\s+\(at\s+([\d-]+)\s+([\d:]+)\)", record)
-        # 这里有问题哦还有single和‘’的问题
-        if match:
-            return {
-                "timeStamp": int(match.group(1)),
-                "transaction_type": match.group(3),
-                "amount": float(match.group(4)),
-                "token": match.group(5),
-                "dateTime": f"{match.group(6)} {match.group(7)}"
-            }
-        else:
-            return None
-    except Exception as e:
-        print(f"Failed to parse record: {record}. Error: {e}")
-        return None
-
-
-def summarize_and_visualize(final_combined_df: pd.DataFrame, base_tokens: set) -> pd.DataFrame:
-    """
-    Summarize and visualize transaction data for buy/sell records and profit.
-    
-    :param final_combined_df: DataFrame with 'formatted_record' column containing transaction records.
-    :param base_tokens: Set of base tokens to focus on (e.g., {"USDT", "USDC"}).
-    :return: A DataFrame summarizing buy/sell amounts and profit for each token.
-    """
-    # Parse the 'formatted_record' column
-    parsed_data = final_combined_df['formatted_record'].apply(parse_transaction)
-    parsed_df = pd.DataFrame([record for record in parsed_data if record is not None])
-    print(parsed_df)
-
-    if parsed_df.empty:
-        print("No valid transaction records found.")
-        return pd.DataFrame()
-
-    # Filter by base tokens
-    filtered_df = parsed_df[parsed_df['token'].isin(base_tokens)]
-    
-    # Summarize buy/sell records
-    summary = filtered_df.groupby(['token', 'transaction_type']).agg(
-        total_amount=('amount', 'sum')
-    ).unstack(fill_value=0)
-
-    # Calculate profit (SELL - BUY)
-    summary.columns = ['Total Buy', 'Total Sell']
-    summary['Profit'] = summary['Total Sell'] - summary['Total Buy']
-    summary.reset_index(inplace=True)
-
-    # Print the summary as a DataFrame
-    print("\nSummary Table:")
-    print(summary)
-
-    return summary
