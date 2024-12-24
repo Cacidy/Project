@@ -167,7 +167,7 @@ def save_partial_transfers(transfers_df: pd.DataFrame, output_file: str) -> None
     """
     columns_to_keep = [
     'dateTime', 'blockNumber', 'timeStamp', 'hash', 'from', 'to',
-    'value', 'tokenName', 'tokenSymbol'
+    'value', 'ActualValue', 'tokenName', 'tokenSymbol'
     ]
     if not transfers_df.empty:
         filtered_transaction_data = transfers_df[columns_to_keep]
@@ -208,21 +208,32 @@ def process_duplicate_hashes(duplicate_hashes: pd.DataFrame, address: str, base_
 
         if not base_tokens_group.empty and not other_tokens_group.empty:
             transaction_type = "SELL" if base_tokens_group['to'].iloc[0] == address else "BUY"
-            base_token_info = f"{base_tokens_group['value'].sum()} {base_tokens_group['tokenSymbol'].iloc[0]}"
-            other_token_info = f"{other_tokens_group['value'].sum()} {other_tokens_group['tokenSymbol'].iloc[0]}"
+            base_token_value = base_tokens_group['ActualValue'].sum()
+            base_token_symbol = base_tokens_group['tokenSymbol'].iloc[0]
+
+            other_token_value = other_tokens_group['ActualValue'].sum()
+            other_token_symbol = other_tokens_group['tokenSymbol'].iloc[0]
+
+            average_price = other_token_value / base_token_value if base_token_value > 0 else 0
+            price_unit = f"{other_token_symbol}/{base_token_symbol}"
             record = (
-                f"{group['timeStamp'].iloc[0]} W {transaction_type} {other_token_info} of {base_token_info} "
+                f"{group['timeStamp'].iloc[0]} W {transaction_type} {other_token_value} {other_token_symbol} "
+                f"of {base_token_value} {base_token_symbol} at avg price {average_price:.6f} "
                 f"(at {group['dateTime'].iloc[0]})"
             )
+
             output_records.append({
                 "formatted_record": record,
                 "timeStamp": group['timeStamp'].iloc[0],
-                "dateTime": group['dateTime'].iloc[0]
+                "dateTime": group['dateTime'].iloc[0],
+                "hash": group['hash'].iloc[0]
             })
     return pd.DataFrame(output_records)
 
 
-def find_matched_transactions(transaction_data: pd.DataFrame, address: str, base_tokens: set) -> (pd.DataFrame, list):
+from typing import Tuple
+
+def find_matched_transactions(transaction_data: pd.DataFrame, address: str, base_tokens: set) -> Tuple[pd.DataFrame, list]:
     """
     Find and process matched BUY/SELL transactions.
     : param transaction_data: DataFrame containing transaction data.
@@ -245,18 +256,30 @@ def find_matched_transactions(transaction_data: pd.DataFrame, address: str, base
             (current_row['from'] == address and next_row['to'] == address)):
             if ((current_row['tokenSymbol'] in base_tokens or next_row['tokenSymbol'] in base_tokens) and
                 not (current_row['tokenSymbol'] in base_tokens and next_row['tokenSymbol'] in base_tokens)):
-                transaction_type = "\'SELL\'" if current_row['to'] == address else "\'BUY\'"
+                transaction_type = "SELL" if current_row['to'] == address else "BUY"
                 base_token = current_row if current_row['tokenSymbol'] in base_tokens else next_row
                 other_token = next_row if base_token is current_row else current_row
 
-                base_token_info = f"{base_token['value']} {base_token['tokenSymbol']}"
-                other_token_info = f"{other_token['value']} {other_token['tokenSymbol']}"
+                base_token_value = base_token['ActualValue']
+                base_token_symbol = base_token['tokenSymbol']
+                other_token_value = other_token['ActualValue']
+                other_token_symbol = other_token['tokenSymbol']
+
+                average_price = other_token_value / base_token_value if base_token_value > 0 else 0
+                price_unit = f"{other_token_symbol}/{base_token_symbol}"
 
                 record = (
-                    f"{current_row['timeStamp']} W {transaction_type} {other_token_info} of {base_token_info} "
+                    f"{current_row['timeStamp']} W {transaction_type} {other_token_value} {other_token_symbol} "
+                    f"of {base_token_value} {base_token_symbol} at avg price {average_price:.6f} "
                     f"(at {current_row['dateTime']})"
                 )
-                matched_records.append({"formatted_record": record, "dateTime": current_row['dateTime']})
+                
+                matched_records.append({
+                    "formatted_record": record,
+                    "dateTime": current_row['dateTime'],
+                    "hash": current_row['hash']
+                })
+                
                 matched_indices.extend([i, i + 1])
                 skip_next = True
 
@@ -277,7 +300,7 @@ def find_single_transactions(transaction_data: pd.DataFrame, address: str, base_
         else:
             transaction_type = "single BUY" if row['from'] == address else "single SELL"
 
-        record = f"{row['timeStamp']} W {transaction_type} {row['value']} {row['tokenSymbol']} (at {row['dateTime']})"
+        record = f"{row['timeStamp']} W {transaction_type} {row['ActualValue']} {row['tokenSymbol']} (at {row['dateTime']})"
         single_records.append({
             "formatted_record": record,
             "dateTime": row['dateTime'],
@@ -332,9 +355,9 @@ def process_transactions(transaction_data: pd.DataFrame, output_file: str, addre
     if not final_combined_df.empty:
         final_combined_df = final_combined_df.sort_values(by='dateTime').reset_index(drop=True)
         # final_combined_df.to_csv(output_file, index=False)
-        # print("Formatted Transactions: final part")
-        # for record in final_combined_df['formatted_record']:
-        #     print(record)
+        print("Formatted Transactions: final part")
+        for record in final_combined_df['formatted_record']:
+            print(record)
     
     return final_combined_df
 
