@@ -231,6 +231,7 @@ def process_duplicate_hashes(duplicate_hashes: pd.DataFrame, address: str, base_
                 "base_token_volume": base_token_value,
                 "other_token_volume": other_token_value,
                 "average_price": average_price,
+                "token_symbol": other_token_symbol,
                 "price_unit": price_unit
             })
             
@@ -286,6 +287,7 @@ def find_matched_transactions(transaction_data: pd.DataFrame, address: str, base
                     "base_token_volume": base_token_value,
                     "other_token_volume": other_token_value,
                     "average_price": average_price,
+                    "token_symbol": other_token_symbol,
                     "price_unit": price_unit
                 }
 
