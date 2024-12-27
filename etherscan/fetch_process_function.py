@@ -282,6 +282,7 @@ def find_matched_transactions(transaction_data: pd.DataFrame, address: str, base
                         f"(at {current_row['dateTime']})"
                     ),
                     "dateTime": current_row['dateTime'],
+                    "timeStamp": current_row['timeStamp'],
                     "hash": current_row['hash'],
                     "transaction_type": transaction_type,
                     "base_token_volume": base_token_value,

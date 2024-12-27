@@ -13,6 +13,7 @@ BASE_URL = "https://api.etherscan.io/v2/api"
 # for more chain id, visit https://docs.etherscan.io/etherscan-v2/getting-started/supported-chains
 # for more endpoints, visit https://forms.blockscan.com/public/grid/3E9QiN00NLhCQVibiP3Z-Bpqhmd7zGXsgapEKJupxiI
 # 封装为函数是因为url以及response这种变量命很容易重复，导致代码不易维护
+# 是api函数的封装和使用，暂时不会全部用上
 # ******************************************** Useful part *******************************************************
 def get_erc20_transfers(
     address: str,
