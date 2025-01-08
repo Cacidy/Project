@@ -1,0 +1,38 @@
+address,from_count,to_count,name_tag,total_count,is_in_top_accounts
+0x0478aa0f766bbcfd0882ad8ae5df5f0531f06065,2,0,Butterfly AI: Deployer,2,False
+0x119ca458c5f91d3815e5f8a29633d709569b4eb3,0,1,Address,1,False
+0x1246e490308db61dca45ead613f47430de3830ad,0,2,Address,2,False
+0x2887f96c5b3dc08dbe1312017310b2f26b228e31,0,2,GnosisSafeProxy,2,False
+0x2ac62e416ce9fc52394a045b66dee9dead4be053,1,0,Address,1,False
+0x2d732631d248006f94b52af8fd0a610c85894d6a,1,0,Address,1,False
+0x33c59f63771f2ab4c9f20c3955526416f02528ca,0,2,Address,2,False
+0x3b54f4fbfafd0e7167dcd70594e2d1b8bcbfe4e9,0,2,Address,2,False
+0x4125af68487bec121a2b90c0e15d824b53899533,1,0,Address,1,False
+0x4ac3bf54fbbf481c991d2f04bad2ff6393d9eb42,1,0,SafeProxy,1,False
+0x5851a4148233d84fcbf255109f99bbdd6c8c9cba,0,2,Address,2,False
+0x5be9a4959308a0d0c7bc0870e319314d8d957dbb,112,4151,World Liberty: Multisig,4263,False
+0x6ae4eb64fd04e36a006969135f5013cbb0c15285,1,0,Address,1,False
+0x6e3382c4c4a69a3a62b489a456b327b5d301bea6,1,0,LNWDL: Deployer,1,False
+0x78ff9211317620de95602c9cbed3ae803689e545,1,0,optimusvisionfund.eth,1,False
+0x7b80a4166390e86bd2193ebf3a2256edc545ad73,0,2,Address,2,False
+0x7e99042e82204df12c3d783c6795e8b7ddcf3fce,0,2,Address,2,False
+0x813d37db4330fcf39fa5fb1beb0df603e5b02b80,0,2,Address,2,False
+0x81df2c977b245af2598cfdaa599d3d515390dd9d,0,2,Address,2,False
+0x88888c037df4527933fa8ab203a89e1e6e58db70,1,0,Multisender.app,1,False
+0x9008d19f58aabd9ed0d60971565aa8510560ab41,40,73,CoW Protocol: GPv2Settlement,113,False
+0x90fab54fd77bec60d59844a7d22a3de41b734989,0,2,Address,2,False
+0x92c3619b6297ab3347f936ee31a9c1429cfc8493,0,2,Address,2,False
+0x97f1f8003ad0fb1c99361170310c65dc84f921e3,1,0,World Liberty 1,1,False
+0xa40dd20c8630d5518e490efc5fb4b59e3cdff3aa,0,1,Address,1,False
+0xb0d28072304f61132d62dcc4078d0d2ddaa73613,0,2,Address,2,False
+0xb72acffe382f496ded908ea1ed16087ddfaa69ef,1,0,Address,1,False
+0xba57a914b20840c2b0df8f4152cca2e4960beff1,0,2,Address,2,False
+0xcee7557702b3e4b72dad6cd93adc51b3c2b34766,1,0,limies.eth,1,False
+0xd250b4888433cc080f510f243b24aea2413e89ef,0,1,Address,1,False
+0xdf4c9370d10b811351a269819c2a79209dc5f7eb,0,1,Address,1,False
+0xe217e15b3c19cc0427f9492dc3bcfe8220afad10,4097,1,TransparentUpgradeableProxy,4098,False
+0xe60ee6c319c4103b9957eea086128dea5d508558,1,0,Address,1,False
+0xed1b00895c5db8ac09e2e94267819ed2f1ae06fb,0,2,Address,2,False
+0xee7f7f53f0d0c8c56a38e97c5a58e4d321a174dc,0,2,GnosisSafeProxy,2,False
+0xf32e3596f555546acc4ad6ef67e1abf36b134748,0,2,GnosisSafeProxy,2,False
+0xf7c9c6bfc102e09a64c6b2248c3d4cb8e01360aa,0,2,Address,2,False
