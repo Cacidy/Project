@@ -1,8 +1,9 @@
 import os
-import re
 import logging
 import pandas as pd
-import matplotlib.pyplot as plt
+import requests
+from bs4 import BeautifulSoup
+from tqdm import tqdm
 from etherscan_functions import get_erc20_transfers, get_block_numbers_by_date
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -379,3 +380,135 @@ def process_transactions(transaction_data: pd.DataFrame, output_file: str, addre
         #     print(record)
     
     return output_df_1, combined_df, final_combined_df
+
+
+def calculate_pnl(record_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate PnL for BTC transactions based on BTC_record_df.
+
+    :param btc_record_df: DataFrame containing BTC transaction records.
+    :return: DataFrame with calculated PnL and summary of Realised and Unrealised PnL.
+    """
+    
+    # Define current price as the price of the last row
+    current_price = record_df.iloc[-1]['average_price']
+    
+    results = []
+    total_pnl = 0
+
+    for _, row in record_df.iterrows():
+        transaction_type = row['transaction_type']
+        amount = row['other_token_volume']
+        price = row['average_price']
+
+        # Calculate PnL for each row based on the difference from the current price
+        pnl = (current_price - price) * amount
+        
+        # For SELL transactions, PnL is negative because it's reducing the position
+        if transaction_type == "SELL":
+            pnl *= -1
+
+        # Ignore the last row (current price reference)
+        if row.name == record_df.index[-1]:
+            pnl = 0
+
+        total_pnl += pnl
+
+        # Append the result for this transaction
+        results.append({
+            "Date": row['dateTime'],
+            "timeStamp": row['timeStamp'],
+            "Type": transaction_type,
+            "amount": amount,
+            "price": price,
+            "pnl": pnl
+        })
+
+    # Convert results to a DataFrame
+    pnl_df = pd.DataFrame(results)
+
+    return pnl_df
+
+
+def get_transfer_account_counts(transfers_df, top_accounts_df):
+    """
+
+    """
+
+    from_address_counts = transfers_df["from"].value_counts().reset_index()
+    from_address_counts.columns = ["address", "from_count"]
+
+    to_address_counts = transfers_df["to"].value_counts().reset_index()
+    to_address_counts.columns = ["address", "to_count"]
+
+    address_counts = pd.merge(
+        from_address_counts, to_address_counts, on="address", how="outer"
+    ).fillna(0)
+    address_counts["from_count"] = address_counts["from_count"].astype(int)
+    address_counts["to_count"] = address_counts["to_count"].astype(int)
+
+    address_counts["total_value_count"] = (
+        address_counts["from_value"] + address_counts["to_value"]
+    )
+    
+    top_addresses_set = set(top_accounts_df["Address"])
+    address_counts["is_in_top_accounts"] = address_counts["address"].apply(
+        lambda x: x in top_addresses_set
+    )
+    
+    return address_counts
+
+
+def get_public_name_tag(address, name_tag_cache):
+    """
+    
+    """
+    if address in name_tag_cache:
+        return name_tag_cache[address]
+    
+    url = f"https://etherscan.io/address/{address}"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    }
+    response = requests.get(url, headers=headers)
+    # print(response.text[:500])
+    if response.status_code == 200:
+        soup = BeautifulSoup(response.text, "html.parser")
+        title = soup.title.string
+        if title:
+            name_tag = title.split('|')[0].strip()
+            name_tag = name_tag.split('\n')[0].strip()
+            name_tag_cache[address] = name_tag
+            return name_tag
+        else:
+            name_tag_cache[address] = "Unknown"
+            return "Unknown"
+    else:
+        name_tag_cache[address] = f"Error fetching data: {response.status_code}"
+        return f"Error fetching data: {response.status_code}"
+
+
+def add_name_tags(address_counts):
+    """
+
+    """
+    name_tag_cache = {}
+    tqdm.pandas()  # 进度条初始化
+    address_counts["name_tag"] = address_counts["address"].progress_apply(
+        lambda x: get_public_name_tag(x, name_tag_cache)
+    )
+    address_counts["name_tag"] = address_counts["name_tag"].apply(
+        lambda x: "Address" if "Address" in str(x) else x
+    )
+    return address_counts
+
+
+def process_and_save_address(transfers_df, top_accounts_df, output_file):
+    """
+    
+    """
+    address_counts = get_transfer_account_counts(transfers_df, top_accounts_df)
+    address_counts = add_name_tags(address_counts)
+    
+    address_counts.to_csv(output_file, index=False)
+    print(f"Data has been save to {output_file}")
