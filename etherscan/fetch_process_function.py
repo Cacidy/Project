@@ -172,8 +172,7 @@ def save_partial_transfers(transfers_df: pd.DataFrame, output_file: str) -> None
     ]
     if not transfers_df.empty:
         filtered_transaction_data = transfers_df[columns_to_keep]
-        output_file = 'filtered_transaction_data.csv'
-        filtered_transaction_data.to_csv(output_file, index=False)
+        filtered_transaction_data.to_csv(output_file + '/filtered_transaction_data.csv', index=False)
 
 
 def highlight_three_records(grouped_df: pd.core.groupby.DataFrameGroupBy, data: pd.DataFrame) -> pd.DataFrame:
@@ -384,9 +383,8 @@ def process_transactions(transaction_data: pd.DataFrame, output_file: str, addre
 
 def calculate_pnl(record_df: pd.DataFrame) -> pd.DataFrame:
     """
-    Calculate PnL for BTC transactions based on BTC_record_df.
-
-    :param btc_record_df: DataFrame containing BTC transaction records.
+    Calculate PnL for each transaction and return a summary of Realised and Unrealised PnL.
+    :param btc_record_df: DataFrame containing transaction records.
     :return: DataFrame with calculated PnL and summary of Realised and Unrealised PnL.
     """
     
@@ -448,7 +446,7 @@ def get_transfer_account_counts(transfers_df, top_accounts_df):
     address_counts["to_count"] = address_counts["to_count"].astype(int)
 
     address_counts["total_value_count"] = (
-        address_counts["from_value"] + address_counts["to_value"]
+        address_counts["from_count"] + address_counts["to_count"]
     )
     
     top_addresses_set = set(top_accounts_df["Address"])
