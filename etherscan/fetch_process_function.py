@@ -314,7 +314,7 @@ def find_matched_transactions(transaction_data: pd.DataFrame, address: str, base
             if ((base_pattern.match(current_row['tokenSymbol']) or base_pattern.match(next_row['tokenSymbol'])) and
                 not (base_pattern.match(current_row['tokenSymbol']) and base_pattern.match(next_row['tokenSymbol']))):
                 
-                transaction_type = "'SELL'" if current_row['to'] == address else "'BUY'"
+                transaction_type = "\'SELL\'" if current_row['to'] == address else "\'BUY\'"
                 base_token = current_row if base_pattern.match(current_row['tokenSymbol']) else next_row
                 other_token = next_row if base_token is current_row else current_row
 
