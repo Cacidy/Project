@@ -6,6 +6,7 @@ from bs4 import BeautifulSoup
 from tqdm import tqdm
 from etherscan_functions import get_erc20_transfers, get_block_numbers_by_date
 
+INVALID_ADDRESS = "0x0000000000000000000000000000000000000000"
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger()
 
@@ -337,9 +338,18 @@ def process_transactions(transaction_data: pd.DataFrame, output_file: str, addre
     : param base_tokens: Set of base tokens to filter transactions for.
     """
     address = address.lower()
-    save_partial_transfers(transaction_data, output_file)
+    
     transaction_data['dateTime'] = pd.to_datetime(transaction_data['dateTime'])
     transaction_data = transaction_data.sort_values(by=['dateTime', 'hash']).reset_index(drop=True)
+    transaction_data.loc[:, 'ActualValue'] = pd.to_numeric(transaction_data['ActualValue'], errors='coerce')
+    # 如果不转换为数据的话计算会出错
+    
+    # Filter out transactions with invalid addresses    
+    filtered_transaction_data = filtered_transaction_data[
+    (transaction_data['from'] != INVALID_ADDRESS) &
+    (transaction_data['to'] != INVALID_ADDRESS)]
+    
+    save_partial_transfers(filtered_transaction_data, output_file)
 
     duplicate_hashes = transaction_data[transaction_data.duplicated(subset=['hash'], keep=False)]
 
