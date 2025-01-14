@@ -242,6 +242,9 @@ def highlight_three_records(grouped_df, ADDRESS):
     return matched_hashes, combined_hashes_df
 
 
+
+
+
 def process_duplicate_hashes(duplicate_hashes: pd.DataFrame, address: str, base_pattern:re.Pattern) -> pd.DataFrame:
     """
     Process duplicate transaction hashes to identify BUY/SELL actions.
@@ -255,7 +258,8 @@ def process_duplicate_hashes(duplicate_hashes: pd.DataFrame, address: str, base_
         other_tokens_group = group[~group['tokenSymbol'].str.contains(base_pattern, na=False)]
         # base_tokens_group = group[group['tokenSymbol'].isin(base_tokens)]
         # other_tokens_group = group[~group['tokenSymbol'].isin(base_tokens)]
-
+        
+        # 两行交易都是base token的情况下，不处理filter掉
         if not base_tokens_group.empty and not other_tokens_group.empty:
             transaction_type = "SELL" if base_tokens_group['to'].iloc[0] == address else "BUY"
             base_token_value = base_tokens_group['ActualValue'].sum()
