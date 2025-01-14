@@ -1,4 +1,5 @@
 import os
+import re
 import logging
 import pandas as pd
 import requests
@@ -161,41 +162,87 @@ def fetch_and_save_erc20_transfers(
         raise
 
 
-def save_partial_transfers(transfers_df: pd.DataFrame, output_file: str) -> None:
-    """
-    Save partial ERC20 transfers DataFrame to a CSV file.
-    :param transfers_df: DataFrame containing ERC20 transfer data.
-    :param output_file: Path to save the processed data.
-    """
-    columns_to_keep = [
-    'dateTime', 'blockNumber', 'timeStamp', 'hash', 'from', 'to',
-    'value', 'ActualValue', 'tokenName', 'tokenSymbol'
-    ]
-    if not transfers_df.empty:
-        filtered_transaction_data = transfers_df[columns_to_keep]
-        filtered_transaction_data.to_csv(output_file + '/filtered_transaction_data.csv', index=False)
+def combine_group(group, ADDRESS):
+    # 1.检查 timestamp 是否唯一
+    if group['timeStamp'].nunique() != 1:
+        print("❌ The timestamps are not consistent.")
+        return None
+
+    # 2.检查 token 是否只有两种
+    if group['tokenSymbol'].nunique() != 2:
+        print("❌ The tokens are not exactly two.")
+        return None
+
+    # 3.将涉及 ADDRESS 的交易合并
+    merged_data = []
+    # token一定只有两种
+    for token in group['tokenSymbol'].unique():
+        # 筛选当前 token 的交易
+        token_group = group[group['tokenSymbol'] == token]
+
+        # 筛选涉及 ADDRESS 的交易:因为本人地址总会出现在from或to中，而且每行都会出现，其余地址即是我们要统计的
+        address_tx = token_group[(token_group['from'] == ADDRESS) | (token_group['to'] == ADDRESS)]
+
+        if not address_tx.empty:
+            # 累加 actualValue
+            total_value = address_tx['ActualValue'].sum()
+
+            # 获取其他地址
+            other_addresses = address_tx[address_tx['from'] != ADDRESS]['from'].tolist() + \
+                                address_tx[address_tx['to'] != ADDRESS]['to'].tolist()
+            other_addresses = '.'.join(sorted(set(other_addresses)))  # 去重并排序
+
+            # 确定 from 和 to
+            if address_tx['from'].iloc[0] == ADDRESS:
+                from_address = ADDRESS
+                to_address = other_addresses
+            else:
+                from_address = other_addresses
+                to_address = ADDRESS
+
+            merged_tx = {
+                'dateTime': address_tx['dateTime'].iloc[0],
+                'blockNumber': address_tx['blockNumber'].iloc[0],
+                'timeStamp': address_tx['timeStamp'].iloc[0],
+                'hash': address_tx['hash'].iloc[0],
+                'from': from_address,
+                'to': to_address,
+                'ActualValue': total_value,
+                'tokenName': address_tx['tokenName'].iloc[0],
+                'tokenSymbol': token
+            }
+            merged_data.append(merged_tx)
+
+    combined_df = pd.DataFrame(merged_data)
+    return combined_df
 
 
-def highlight_three_records(grouped_df: pd.core.groupby.DataFrameGroupBy, data: pd.DataFrame) -> pd.DataFrame:
-    """
-    Highlight and remove transactions with 3 records in the same hash.
-    : param grouped_df: Grouped DataFrame by transaction hash.
-    : param data: Original DataFrame containing transaction data.
-    """
+def highlight_three_records(grouped_df, ADDRESS):
+    print(f"...Merging {len(grouped_df)} groups of transactions...")
     matched_hashes = []
-
+    combined_hashes_list = []
     for tx_hash, group in grouped_df:
-        if len(group) == 3:
-            print(f"⚠️ High Alert: Transaction Hash {tx_hash} contains 3 records:")
-            print(group)
+        if len(group) >= 3:
+            print(f"Transaction Hash {tx_hash} contains {len(group)} records:")
             matched_hashes.append(tx_hash)
+            
+            # 1.先检查是不是偶数个 奇数个显然不合理
+            if len(group) % 2 != 0:
+                print("❌ The number of records is not even.")
+            else:
+                # 调用 combine_group 检查并合并
+                combined_hash = combine_group(group, ADDRESS)
+                if combined_hash is not None:
+                    combined_hashes_list.append(combined_hash)
+                    
+    if combined_hashes_list:
+        combined_hashes_df = pd.concat(combined_hashes_list, ignore_index=True)
+    else:
+        combined_hashes_df = pd.DataFrame()
+    return matched_hashes, combined_hashes_df
 
-    # i want to delete the abnormal data
-    remaining_data = data[~data['hash'].isin(matched_hashes)].reset_index(drop=True)
-    return remaining_data
 
-
-def process_duplicate_hashes(duplicate_hashes: pd.DataFrame, address: str, base_tokens: set) -> pd.DataFrame:
+def process_duplicate_hashes(duplicate_hashes: pd.DataFrame, address: str, base_pattern:re.Pattern) -> pd.DataFrame:
     """
     Process duplicate transaction hashes to identify BUY/SELL actions.
     : param duplicate_hashes: DataFrame containing duplicate transaction hashes.
@@ -204,8 +251,10 @@ def process_duplicate_hashes(duplicate_hashes: pd.DataFrame, address: str, base_
     """
     output_records = []
     for hash_val, group in duplicate_hashes.groupby('hash'):
-        base_tokens_group = group[group['tokenSymbol'].isin(base_tokens)]
-        other_tokens_group = group[~group['tokenSymbol'].isin(base_tokens)]
+        base_tokens_group = group[group['tokenSymbol'].str.contains(base_pattern, na=False)]
+        other_tokens_group = group[~group['tokenSymbol'].str.contains(base_pattern, na=False)]
+        # base_tokens_group = group[group['tokenSymbol'].isin(base_tokens)]
+        # other_tokens_group = group[~group['tokenSymbol'].isin(base_tokens)]
 
         if not base_tokens_group.empty and not other_tokens_group.empty:
             transaction_type = "SELL" if base_tokens_group['to'].iloc[0] == address else "BUY"
@@ -241,7 +290,7 @@ def process_duplicate_hashes(duplicate_hashes: pd.DataFrame, address: str, base_
 
 from typing import Tuple
 
-def find_matched_transactions(transaction_data: pd.DataFrame, address: str, base_tokens: set) -> Tuple[pd.DataFrame, list]:
+def find_matched_transactions(transaction_data: pd.DataFrame, address: str, base_pattern:re.Pattern) -> Tuple[pd.DataFrame, list]:
     """
     Find and process matched BUY/SELL transactions.
     : param transaction_data: DataFrame containing transaction data.
@@ -262,10 +311,11 @@ def find_matched_transactions(transaction_data: pd.DataFrame, address: str, base
 
         if ((current_row['to'] == address and next_row['from'] == address) or
             (current_row['from'] == address and next_row['to'] == address)):
-            if ((current_row['tokenSymbol'] in base_tokens or next_row['tokenSymbol'] in base_tokens) and
-                not (current_row['tokenSymbol'] in base_tokens and next_row['tokenSymbol'] in base_tokens)):
-                transaction_type = "\'SELL\'" if current_row['to'] == address else "\'BUY\'"
-                base_token = current_row if current_row['tokenSymbol'] in base_tokens else next_row
+            if ((base_pattern.match(current_row['tokenSymbol']) or base_pattern.match(next_row['tokenSymbol'])) and
+                not (base_pattern.match(current_row['tokenSymbol']) and base_pattern.match(next_row['tokenSymbol']))):
+                
+                transaction_type = "'SELL'" if current_row['to'] == address else "'BUY'"
+                base_token = current_row if base_pattern.match(current_row['tokenSymbol']) else next_row
                 other_token = next_row if base_token is current_row else current_row
 
                 base_token_value = base_token['ActualValue']
@@ -300,7 +350,7 @@ def find_matched_transactions(transaction_data: pd.DataFrame, address: str, base
     return pd.DataFrame(matched_records), matched_indices
 
 
-def find_single_transactions(transaction_data: pd.DataFrame, address: str, base_tokens: set) -> pd.DataFrame:
+def find_single_transactions(transaction_data: pd.DataFrame, address: str, base_pattern:re.Pattern) -> pd.DataFrame:
     """
     Process single BUY/SELL transactions.
     : param transaction_data: DataFrame containing transaction data.
@@ -309,27 +359,31 @@ def find_single_transactions(transaction_data: pd.DataFrame, address: str, base_
     """
     single_records = []
     for _, row in transaction_data.iterrows():
-        if row['tokenSymbol'] in base_tokens:
+        if base_pattern.match(row['tokenSymbol']):
             transaction_type = "single SELL" if row['from'] == address else "single BUY"
         else:
             transaction_type = "single BUY" if row['from'] == address else "single SELL"
 
-        record = {
-            "formatted_record": (
-                f"{row['timeStamp']} W {transaction_type} {row['ActualValue']} {row['tokenSymbol']} "
-                f"(at {row['dateTime']})"
-            ),
-            "dateTime": row['dateTime'],
-            "timeStamp": row['timeStamp'],
-            "hash": row['hash'],
-            "transaction_type": transaction_type
-        }
+        formatted_record = (
+            f"{row['timeStamp']} W {transaction_type} {row['ActualValue']} {row['tokenSymbol']} "
+            f"(at {row['dateTime']})"
+        )
 
-        single_records.append(record)
+        # Only include records that match the base_pattern
+        if base_pattern.match(formatted_record):
+            record = {
+                "formatted_record": formatted_record,
+                "dateTime": row['dateTime'],
+                "timeStamp": row['timeStamp'],
+                "hash": row['hash'],
+                "transaction_type": transaction_type
+            }
+            single_records.append(record)
+    
     return pd.DataFrame(single_records)
 
 
-def process_transactions(transaction_data: pd.DataFrame, output_file: str, address: str, base_tokens: set) -> pd.DataFrame:
+def process_transactions(transaction_data: pd.DataFrame, output_file: str, address: str, base_pattern: set) -> pd.DataFrame:
     """
     Process transaction data and save the final result to a CSV file.
     : param transaction_data: DataFrame containing transaction data.
@@ -338,6 +392,10 @@ def process_transactions(transaction_data: pd.DataFrame, output_file: str, addre
     : param base_tokens: Set of base tokens to filter transactions for.
     """
     address = address.lower()
+    columns_to_keep = [
+    'dateTime', 'blockNumber', 'timeStamp', 'hash', 'from', 'to',
+    'ActualValue', 'tokenName', 'tokenSymbol'
+    ]
     
     transaction_data['dateTime'] = pd.to_datetime(transaction_data['dateTime'])
     transaction_data = transaction_data.sort_values(by=['dateTime', 'hash']).reset_index(drop=True)
@@ -345,21 +403,26 @@ def process_transactions(transaction_data: pd.DataFrame, output_file: str, addre
     # 如果不转换为数据的话计算会出错
     
     # Filter out transactions with invalid addresses    
-    filtered_transaction_data = filtered_transaction_data[
+    filtered_transaction_data = transaction_data[
     (transaction_data['from'] != INVALID_ADDRESS) &
     (transaction_data['to'] != INVALID_ADDRESS)]
     
-    save_partial_transfers(filtered_transaction_data, output_file)
+    filtered_transaction_data[columns_to_keep].to_csv(output_file + '/filtered_transaction_data.csv', index=False)
 
-    duplicate_hashes = transaction_data[transaction_data.duplicated(subset=['hash'], keep=False)]
+    duplicate_hashes = filtered_transaction_data[filtered_transaction_data.duplicated(subset=['hash'], keep=False)]
+    filtered_data_1 = filtered_transaction_data[~filtered_transaction_data['hash'].isin(duplicate_hashes['hash'])].reset_index(drop=True)
 
-    # step 1: find if there are 3 records in the same hash, delete them if true.
-    three_record_hashes = highlight_three_records(duplicate_hashes.groupby('hash'), transaction_data)
+    # step 1: find if there are more than 4 records in the same hash, merge them if true.
+    three_record_hashes, combined_df = highlight_three_records(duplicate_hashes.groupby('hash'), address)
     duplicate_hashes = duplicate_hashes[~duplicate_hashes['hash'].isin(three_record_hashes)]
 
-    filtered_data_1 = transaction_data[~transaction_data['hash'].isin(duplicate_hashes['hash'])].reset_index(drop=True)
+    merged_duplicate_df = pd.concat([duplicate_hashes, combined_df], ignore_index=True)
+    merged_duplicate_df = merged_duplicate_df.sort_values(by='timeStamp').reset_index(drop=True)
+    merged_duplicate_df[columns_to_keep].to_csv(output_file + '/merged_transaction_data.csv', index=False)
+    # merged_duplicate_df 所有处理之后的重复数据行
+    
     # step 2: find the type one BUY/SELL
-    output_df_1 = process_duplicate_hashes(duplicate_hashes, address, base_tokens)
+    output_df_1 = process_duplicate_hashes(merged_duplicate_df, address, base_pattern)
     print("Formatted Transactions: part 1")
     if not output_df_1.empty:
         output_df_1 = output_df_1.sort_values(by='dateTime').reset_index(drop=True)
@@ -367,7 +430,7 @@ def process_transactions(transaction_data: pd.DataFrame, output_file: str, addre
         #     print(record)
 
     # step 3: Find 'BUY/SELL' transactions
-    output_df_2, matched_indices = find_matched_transactions(filtered_data_1, address, base_tokens)
+    output_df_2, matched_indices = find_matched_transactions(filtered_data_1, address, base_pattern)
     filtered_data_2 = filtered_data_1.drop(index=matched_indices).reset_index(drop=True)
     combined_df = pd.concat([output_df_1, output_df_2], ignore_index=True)
     print("Formatted Transactions: part 2")
@@ -377,7 +440,7 @@ def process_transactions(transaction_data: pd.DataFrame, output_file: str, addre
         #     print(record)
 
     # step 4: the rest are single transactions
-    output_df_3 = find_single_transactions(filtered_data_2, address, base_tokens)
+    output_df_3 = find_single_transactions(filtered_data_2, address, base_pattern)
 
     # Combine all results
     final_combined_df = pd.concat([output_df_1, output_df_2, output_df_3], ignore_index=True)
