@@ -522,7 +522,7 @@ def calculate_pnl(record_df: pd.DataFrame) -> pd.DataFrame:
     current_price = record_df.iloc[-1]['average_price']
     
     results = []
-    total_pnl = 0
+    net_position = 0  # Track net position
 
     for _, row in record_df.iterrows():
         transaction_type = row['transaction_type']
@@ -536,11 +536,15 @@ def calculate_pnl(record_df: pd.DataFrame) -> pd.DataFrame:
         if transaction_type == "SELL":
             pnl *= -1
 
+        # Update net position
+        if transaction_type == "BUY":
+            net_position += amount
+        elif transaction_type == "SELL":
+            net_position -= amount
+
         # Ignore the last row (current price reference)
         if row.name == record_df.index[-1]:
             pnl = 0
-
-        total_pnl += pnl
 
         # Append the result for this transaction
         results.append({
@@ -549,13 +553,15 @@ def calculate_pnl(record_df: pd.DataFrame) -> pd.DataFrame:
             "Type": transaction_type,
             "amount": amount,
             "price": price,
-            "pnl": pnl
+            "pnl": pnl,
+            "net_position": net_position
         })
 
     # Convert results to a DataFrame
     pnl_df = pd.DataFrame(results)
 
     return pnl_df
+
 
 
 def get_transfer_account_counts(transfers_df, top_accounts_df):
