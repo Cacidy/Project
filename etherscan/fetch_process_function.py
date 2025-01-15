@@ -155,11 +155,59 @@ def fetch_and_save_erc20_transfers(
             logger.info("No transfers found for the given address and date range.")
             return transfers_df
         else :
+            
             return transfers_df
 
     except Exception as e:
         logger.error(f"An error occurred during fetch and save: {e}")
         raise
+
+
+def merge_same_transcation_rows(duplicate_hashes):
+    """
+    Merge duplicate transaction hashes by summing the ActualValue, but only if they are adjacent and identical (except for ActualValue).
+    :param duplicate_hashes: DataFrame containing duplicate transaction hashes.
+    :return: Merged DataFrame.
+    """
+    # 按 hash 分组
+    grouped = duplicate_hashes.groupby('hash')
+
+    # 用于存储合并后的结果
+    merged_data = []
+
+    # 遍历每一组
+    for hash_value, group in grouped:
+        # 如果组中只有一行，直接添加到结果中
+        if len(group) == 1:
+            merged_data.append(group.iloc[0])
+            continue
+
+        # 初始化变量
+        current_row = group.iloc[0].copy()  # 当前行
+        current_value = current_row['ActualValue']  # 当前 ActualValue
+
+        # 遍历组中的每一行（从第二行开始）
+        for i in range(1, len(group)):
+            next_row = group.iloc[i].copy()  # 下一行
+
+            # 检查除 ActualValue 外是否所有列都相同
+            if current_row.drop('ActualValue').equals(next_row.drop('ActualValue')):
+                # 如果相同，累加 ActualValue
+                current_value += next_row['ActualValue']
+            else:
+                # 如果不同，将当前行添加到结果中，并更新当前行
+                current_row['ActualValue'] = current_value
+                merged_data.append(current_row)
+                current_row = next_row
+                current_value = next_row['ActualValue']
+
+        # 添加最后一组合并后的行
+        current_row['ActualValue'] = current_value
+        merged_data.append(current_row)
+
+    # 将结果转换为 DataFrame
+    merged_df = pd.DataFrame(merged_data)
+    return merged_df
 
 
 def combine_group(group, ADDRESS):
@@ -170,7 +218,7 @@ def combine_group(group, ADDRESS):
 
     # 2.检查 token 是否只有两种
     if group['tokenSymbol'].nunique() != 2:
-        print("❌ The tokens are not exactly two.")
+        print("❌ The tokens are not exactly two: ", group['tokenSymbol'].unique())
         return None
 
     # 3.将涉及 ADDRESS 的交易合并
@@ -240,9 +288,6 @@ def highlight_three_records(grouped_df, ADDRESS):
     else:
         combined_hashes_df = pd.DataFrame()
     return matched_hashes, combined_hashes_df
-
-
-
 
 
 def process_duplicate_hashes(duplicate_hashes: pd.DataFrame, address: str, base_pattern:re.Pattern) -> pd.DataFrame:
@@ -393,57 +438,65 @@ def process_transactions(transaction_data: pd.DataFrame, output_file: str, addre
     : param transaction_data: DataFrame containing transaction data.
     : param output_file: Path to save the processed data.
     : param address: Ethereum address to filter transactions for.
-    : param base_tokens: Set of base tokens to filter transactions for.
+    : param base_pattern: Set of base tokens to filter transactions for.
     """
+    # 1.数据清洗
     address = address.lower()
     columns_to_keep = [
     'dateTime', 'blockNumber', 'timeStamp', 'hash', 'from', 'to',
     'ActualValue', 'tokenName', 'tokenSymbol'
     ]
-    
-    transaction_data['dateTime'] = pd.to_datetime(transaction_data['dateTime'])
+    # 筛选只需要的列
+    transaction_data = transaction_data[columns_to_keep]
+    # 处理日期
+    transaction_data.loc[:, 'dateTime'] = pd.to_datetime(transaction_data['dateTime'])
     transaction_data = transaction_data.sort_values(by=['dateTime', 'hash']).reset_index(drop=True)
+    # 转换为数据格式
     transaction_data.loc[:, 'ActualValue'] = pd.to_numeric(transaction_data['ActualValue'], errors='coerce')
-    # 如果不转换为数据的话计算会出错
     
-    # Filter out transactions with invalid addresses    
+    # 删去null地址
     filtered_transaction_data = transaction_data[
     (transaction_data['from'] != INVALID_ADDRESS) &
     (transaction_data['to'] != INVALID_ADDRESS)]
-    
-    filtered_transaction_data[columns_to_keep].to_csv(output_file + '/filtered_transaction_data.csv', index=False)
+    # 存储第一步处理完的数据
+    filtered_transaction_data.to_csv(output_file + '/filtered_transaction_data.csv', index=False)
 
+    # 2.处理重复数据
+    # 找出重复的hash
     duplicate_hashes = filtered_transaction_data[filtered_transaction_data.duplicated(subset=['hash'], keep=False)]
+    # 存储一份剔除重复数据的数据，用于以后处理
     filtered_data_1 = filtered_transaction_data[~filtered_transaction_data['hash'].isin(duplicate_hashes['hash'])].reset_index(drop=True)
-
-    # step 1: find if there are more than 4 records in the same hash, merge them if true.
+    # 把除了ActualValue之外的列都重复且相邻的行合并起来
+    duplicate_hashes = merge_same_transcation_rows(duplicate_hashes)
+    
+    # 3.处理duplicate_hashes中的多条数据情况，因为相同hash的交易可以合并，并且得到新的同hash数据集
     three_record_hashes, combined_df = highlight_three_records(duplicate_hashes.groupby('hash'), address)
     duplicate_hashes = duplicate_hashes[~duplicate_hashes['hash'].isin(three_record_hashes)]
 
     merged_duplicate_df = pd.concat([duplicate_hashes, combined_df], ignore_index=True)
     merged_duplicate_df = merged_duplicate_df.sort_values(by='timeStamp').reset_index(drop=True)
-    merged_duplicate_df[columns_to_keep].to_csv(output_file + '/merged_transaction_data.csv', index=False)
+    merged_duplicate_df[columns_to_keep].to_csv(output_file + '/final_merged_transaction_data.csv', index=False)
     # merged_duplicate_df 所有处理之后的重复数据行
     
-    # step 2: find the type one BUY/SELL
+    # 4.find the type one BUY/SELL，注意这一类交易前提是hash相同，且只有两条记录
     output_df_1 = process_duplicate_hashes(merged_duplicate_df, address, base_pattern)
-    print("Formatted Transactions: part 1")
     if not output_df_1.empty:
         output_df_1 = output_df_1.sort_values(by='dateTime').reset_index(drop=True)
+        # print("Formatted Transactions: part 1")
         # for record in output_df_1['formatted_record']:
         #     print(record)
 
-    # step 3: Find 'BUY/SELL' transactions
+    # 5.第二类交易判断
     output_df_2, matched_indices = find_matched_transactions(filtered_data_1, address, base_pattern)
     filtered_data_2 = filtered_data_1.drop(index=matched_indices).reset_index(drop=True)
     combined_df = pd.concat([output_df_1, output_df_2], ignore_index=True)
-    print("Formatted Transactions: part 2")
     if not combined_df.empty:
         combined_df = combined_df.sort_values(by='dateTime').reset_index(drop=True)
+        # print("Formatted Transactions: part 2")
         # for record in combined_df['formatted_record']:
         #     print(record)
 
-    # step 4: the rest are single transactions
+    # 6.其余
     output_df_3 = find_single_transactions(filtered_data_2, address, base_pattern)
 
     # Combine all results
@@ -451,7 +504,7 @@ def process_transactions(transaction_data: pd.DataFrame, output_file: str, addre
     if not final_combined_df.empty:
         final_combined_df = final_combined_df.sort_values(by='dateTime').reset_index(drop=True)
         # final_combined_df.to_csv(output_file, index=False)
-        print("Formatted Transactions: final part")
+        # print("Formatted Transactions: final part")
         # for record in final_combined_df['formatted_record']:
         #     print(record)
     
