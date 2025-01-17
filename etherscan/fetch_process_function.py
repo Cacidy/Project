@@ -87,6 +87,8 @@ def process_and_save_transfers(transfers_df: pd.DataFrame, output_file: str) -> 
         
         cols = ['dateTime'] + [col for col in transfers_df.columns if col != 'dateTime']
         transfers_df = transfers_df[cols]
+        transfers_df['dateTime'] = pd.to_datetime(transfers_df['dateTime'])
+        transfers_df = transfers_df.sort_values(by=['dateTime', 'hash']).reset_index(drop=True)
         
         output_file = os.path.join(output_file, 'erc20_transfers.csv')
         transfers_df.to_csv(output_file, index=False)
@@ -101,7 +103,7 @@ def fetch_and_save_erc20_transfers(
     end_date: str,
     output_file: str,
     offset: int = 1000
-) -> pd.DataFrame:
+):
     """
     Fetch block numbers, retrieve ERC20 transfers, and save the processed data in one step.
     combing the abover 2 functions
@@ -109,7 +111,6 @@ def fetch_and_save_erc20_transfers(
     :param start_date: Start date in 'YYYY-MM-DD HH:MM' format (local time).
     :param end_date: End date in 'YYYY-MM-DD HH:MM' format (local time).
     :param output_file: Path to save the processed data.
-    :return: A Pandas DataFrame containing the processed transfer data.
 
     # if you wanna use this function in another script, you can import it like this:
 
@@ -147,17 +148,6 @@ def fetch_and_save_erc20_transfers(
         # Step 3: Save processed transfers
         process_and_save_transfers(transfers_df, output_file)
         logger.info(f"Transfers saved to {output_file}")
-
-        # Check if DataFrame is empty
-        if transfers_df.empty:
-            transfers_df['dateTime'] = pd.to_datetime(transfers_df['dateTime'])
-            transfers_df = transfers_df.sort_values(by=['dateTime', 'hash']).reset_index(drop=True)
-            # organize data
-            logger.info("No transfers found for the given address and date range.")
-            return transfers_df
-        else :
-            
-            return transfers_df
 
     except Exception as e:
         logger.error(f"An error occurred during fetch and save: {e}")
