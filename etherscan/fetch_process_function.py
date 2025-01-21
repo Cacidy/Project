@@ -257,12 +257,12 @@ def combine_group(group, ADDRESS):
 
 
 def highlight_three_records(grouped_df, ADDRESS):
-    print(f"...Merging {len(grouped_df)} groups of transactions...")
+    # print(f"...Merging {len(grouped_df)} groups of transactions...")
     matched_hashes = []
     combined_hashes_list = []
     for tx_hash, group in grouped_df:
         if len(group) >= 3:
-            print(f"Transaction Hash {tx_hash} contains {len(group)} records:")
+            # print(f"Transaction Hash {tx_hash} contains {len(group)} records:")
             matched_hashes.append(tx_hash)
             
             # 1.先检查是不是偶数个 奇数个显然不合理
