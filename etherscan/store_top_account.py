@@ -4,7 +4,7 @@ import requests
 from tqdm import tqdm
 from bs4 import BeautifulSoup
 '''
-这个文件用于存储top list
+这个文件用于存储top list，直接运行就可以得到result里面的top_accounts.csv，存储用于以后参照
 '''
 
 OUTPUT_FILE = "C:/Users/YuweiCao/Documents/GitHub/Project/Project/etherscan/result"

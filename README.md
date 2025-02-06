@@ -17,8 +17,9 @@ Project
 │   ├── defiLlamaAPI.py  
 │   └── demo.ipynb  
 ├── etherscan/  
-│   ├── result/  
-│   │   └── filtered_transaction_data.csv  
+│   ├── band_result/
+|   ├── result/  
+|   └── pnl_result/
 │   ├── cal_PnL.ipynb  
 │   ├── data_fetch.ipynb  
 │   ├── data_process.ipynb  
@@ -58,7 +59,10 @@ Project
 
 ### etherscan
 
-* result 存储交易数据。all_erc20_transfers.csv是trump对应地址所有数据；erc20_transfers.csv是每次运行代码时存储的结果；filtered_transaction_data.csv是对数据的列进行了一些选取方便比对数据，也涵盖所有的交易；from_to_address_count.csv是对于交易地址的计数。
+* result 存储final_results_pnl_address.ipynb相关存储的交易数据。
+* band_result test_adress23.ipynb输出的数据存储。
+* pnl_result address "0x2c89a2ee92b9870f55989b4132a58c0e85222d86"以及"0x6c2a355929ee1262305e385ad49b84fe5f5a4777"合并后单独token的pnl记录（文件中记为address2，address3）。
+* store_top_account.py 用爬虫抓取etherscan的top list，https://etherscan.io/accounts。
 * moralis.ipynb 对moralis api使用的几个例子，测试了一下api获取数据的限制。
 * etherscan_functions.py 和 etherscan_examples.ipynb 分别是对etherscan api的基础函数封装以及基础调用示例。优先使用的函数放在etherscan_functions.py的前面。
 * data_fetch.ipynb和data_process.ipynb是获取（所有的）交易数据以及处理的一个流程。其中处理包括：
@@ -66,10 +70,9 @@ Project
   * 判断是否有三条同hash数据，判断是否为一二三类交易。
     * 一二三类交易定义为：BUY/SELL:同hash一进一出，其中之一为`BASE_TOKENS`；"BUY"/"SELL":不同hash相邻一进一出，token其中之一为`BASE_TOKENS`；single BUY/SELL第三类交易定义为其余单独的进/出。
 * fetch_process_function.py 存储data_fetch.ipynb和data_process.ipynb中的函数，便于后面可以给参数直接调用。
-* cal_PnL.ipynb 调用接口，提供`ADDRESS,START_DATE,END_DATE,OUTPUT_FILE,API_KEY,BASE_TOKENS`参数，`fetch_and_save_erc20_transfers`函数可以获取保存数据；`process_transactions`判断交易类型；并且进行初步PnL计算（还有问题）；最后一段代码对交易地址进行计数。
+* final_results_pnl_address.ipynb 调用接口，提供`ADDRESS,START_DATE,END_DATE,OUTPUT_FILE,API_KEY,BASE_TOKENS`参数，`fetch_and_save_erc20_transfers`函数可以获取保存数据；`process_transactions`判断交易类型；并且进行初步PnL计算；最后一段代码对交易地址进行计数。（最后两个代码块是想比较价格判断是否可以合并，但是写的有些问题）
   * 调用逻辑是cal_PnL.ipynb <-- fetch_process_function.py <-- etherscan_functions.py
+* test_address23.ipynb address2，address3分批次获取大范围日期数据并且复原一下波段结果（这个波段是硬性复原，不太makesense）最后有合并后单独token的pnl的结果图
+* pnl_plot.ipynb 单独用来测试pnl绘制的notebook。
 
-## 存在问题
-
-1.对于交易类型的判断还有不少问题，第一类型没问题，但是二三有问题。这就导致计算pnl的时候只有第一类是正确的，一旦加上第二类就会有错误。  
-2.交易地址判断。交易地址如何判断是不是交易所呢，频繁交易地址目前只有三个（包括自己的）。
+#### 主要结果可以参考final_results_pnl_address.ipynb和test_address23.ipynb
