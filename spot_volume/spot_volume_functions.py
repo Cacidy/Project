@@ -206,7 +206,52 @@ def fetch_spot_volume_data(
             csv_filepath = os.path.join(save_dir, f"{market}_spot_volume_{limit}h.csv")
             spot_volume_df.to_csv(csv_filepath, index=False, encoding="utf-8")
             print(f"📁 Data for {market} saved to {csv_filepath}")
-            
+
+
+def process_spot_volume_data(df: pd.DataFrame, time_interval: str = "1D", group_by_instrument: bool = True) -> tuple:
+    '''Process spot trading volume data with aggregation
+
+     Args:
+         df(pd.DataFrame): DataFrame containing spot volume data
+         time_interval(str): Aggregation time interval (default: '1D' for daily).
+                            Examples: '4h' (4 hours), '12h' (12 hours), '1D' (daily)
+         group_by_instrument(bool): Whether to aggregate per instrument (default: False)
+
+     Return:
+         Tuple (processed DataFrame, aggregation description)
+         
+     Usage:
+         df = pd.read_csv("Binance_spot_volume_1000h.csv")
+         df_4h, desc_4h = process_spot_volume_data(df, time_interval="4h", group_by_instrument=True)
+         print(desc_4h)
+         print(df_4h.head())
+    '''
+    if "time" not in df.columns:
+        raise ValueError("❌ The DataFrame must contain a 'time' column.")
+
+    df.set_index("time", inplace=True)
+
+    agg_methods = {
+        "open": "first",
+        "high": "max",
+        "low": "min",
+        "close": "last",
+        "volume": "sum",
+        "quote_volume": "sum"
+    }
+    if group_by_instrument:
+        grouped_df = df.groupby("instrument").resample(time_interval).agg(agg_methods)
+        grouped_df = grouped_df.reset_index()
+        # 去除 instrument 列中的前缀，在这个使用过程中输出会给instrument加上1000前缀，原因是instrument
+        # 在groupby的时候被当做了index，会被转化为string类型等格式变化造成。
+        grouped_df["instrument"] = grouped_df["instrument"].str.replace("1000", "")
+        desc = f"Data aggregated by instrument and resampled with {time_interval} interval."
+    else:
+        grouped_df = df.resample(time_interval).agg(agg_methods).reset_index()
+        desc = f"Data resampled with {time_interval} interval (aggregated across all instruments)."
+    
+    return grouped_df, desc
+ 
             
 markets_df = fetch_markets_data(API_KEY)
 print(markets_df.head())
