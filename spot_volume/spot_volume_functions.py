@@ -252,27 +252,161 @@ def process_spot_volume_data(df: pd.DataFrame, time_interval: str = "1D", group_
     
     return grouped_df, desc
  
+
+def fetch_and_aggregate_spot_volume(
+    api_key: str,
+    instruments: list,
+    markets: list,
+    save_dir: str,
+    time_interval: str = "1h",
+    group_by_instrument: bool = True,
+    limit: int = 2000,
+    aggregate: int = 1,
+    fill: str = "true",
+    apply_mapping: str = "true"
+):
+    '''Fetch, save, and process spot volume data for selected instruments.
+
+    Args:
+        api_key(str): API key for authentication.
+        instruments(list): List of instrument pairs to fetch, e.g., ["BTC-USDT", "ETH-USDT"].
+        markets(list): List of markets (exchanges) to fetch from, e.g., ["binance", "coinbase"].
+        save_dir(str): Directory to save and process data.
+        time_interval(str): Aggregation time interval (default: "1h").
+        group_by_instrument(bool): Whether to aggregate per instrument (default: True).
+        limit(int): Number of data points to fetch per instrument (default: 2000).
+        aggregate(int): Time interval in hours for raw data (default: 1).
+        fill(str): Whether to fill missing data points (default: 'true').
+        apply_mapping(str): Whether to apply asset mapping (default: 'true').
+
+    Return:
+        Tuple (processed DataFrame, aggregation description).
+    '''
+    
+    os.makedirs(save_dir, exist_ok=True)
+    all_trade_data = []
+
+    # 🔹 遍历所有市场 (exchanges)
+    for market in markets:
+        for instrument in instruments:
+            params = {
+                "market": market,
+                "instrument": instrument,
+                "limit": limit,
+                "aggregate": aggregate,
+                "fill": fill,
+                "apply_mapping": apply_mapping,
+                "response_format": "JSON",
+            }
+
+            response = requests.get(
+                "https://data-api.cryptocompare.com/spot/v1/historical/hours",
+                headers={"Content-type": "application/json", "authorization": f"Apikey {api_key}"},
+                params=params
+            )
+
+            if response.status_code == 200:
+                json_response = response.json()
+                if "Data" in json_response and isinstance(json_response["Data"], list) and len(json_response["Data"]) > 0:
+                    for entry in json_response["Data"]:
+                        all_trade_data.append({
+                            "market": market,
+                            "instrument": instrument,
+                            "base_asset": entry["BASE"],
+                            "quote_asset": entry["QUOTE"],
+                            "time": pd.to_datetime(entry["TIMESTAMP"], unit="s"),
+                            "open": entry["OPEN"],
+                            "high": entry["HIGH"],
+                            "low": entry["LOW"],
+                            "close": entry["CLOSE"],
+                            "total_trades": entry["TOTAL_TRADES"],
+                            "total_trades_buy": entry["TOTAL_TRADES_BUY"],
+                            "total_trades_sell": entry["TOTAL_TRADES_SELL"],
+                            "volume": entry["VOLUME"],
+                            "quote_volume": entry["QUOTE_VOLUME"],
+                            "volume_buy": entry["VOLUME_BUY"],
+                            "quote_volume_buy": entry["QUOTE_VOLUME_BUY"],
+                            "volume_sell": entry["VOLUME_SELL"],
+                            "quote_volume_sell": entry["QUOTE_VOLUME_SELL"],
+                        })
+                    print(f"✅ Data fetched: {market} - {instrument} ({len(json_response['Data'])} hours)")
+                else:
+                    print(f"❌ No data for {market} - {instrument}")
+            else:
+                print(f"❌ API request failed for {market} - {instrument}, Status Code: {response.status_code}")
+
+            time.sleep(0.5)
+
+    if not all_trade_data:
+        print("❌ No trade data collected.")
+        return None, "No data available"
+
+    df = pd.DataFrame(all_trade_data)
+
+    df["time"] = pd.to_datetime(df["time"])
+    df.set_index("time", inplace=True)
+
+    agg_methods = {
+        "open": "first",
+        "high": "max",
+        "low": "min",
+        "close": "last",
+        "volume": "sum",
+        "quote_volume": "sum"
+    }
+
+    if group_by_instrument:
+        grouped_df = df.groupby("instrument").resample(time_interval).agg(agg_methods).reset_index()
+        desc = f"Data aggregated by instrument and resampled with {time_interval} interval."
+        file_name = f"spot_volume_{time_interval}_by_instrument.csv"
+    else:
+        grouped_df = df.resample(time_interval).agg(agg_methods).reset_index()
+        desc = f"Data resampled with {time_interval} interval (aggregated across all instruments)."
+        file_name = f"spot_volume_{time_interval}_all.csv"
+
+    save_path = os.path.join(save_dir, file_name)
+    grouped_df.to_csv(save_path, index=False, encoding="utf-8")
+    print(f"✅ {desc}")
+
+    return grouped_df, desc
+
+
             
-markets_df = fetch_markets_data(API_KEY)
-print(markets_df.head())
+# markets_df = fetch_markets_data(API_KEY)
+# print(markets_df.head())
 
-selected_markets = ["binance", "coinbase", "kraken"]
+# selected_markets = ["binance", "coinbase", "kraken"]
+# save_directory = "./result"
+
+# instruments_df = fetch_market_instruments(API_KEY, selected_markets, save_directory)
+# print(instruments_df.head())
+
+# csv_filepath = os.path.join(save_directory, "crypto_instruments.csv")
+# filtered_instruments_df = load_instruments(csv_filepath)
+# print(filtered_instruments_df.head())
+
+# fetch_spot_volume_data(
+#     api_key=API_KEY,
+#     instruments=filtered_instruments_df,
+#     save_dir=save_directory,
+#     limit=2000,
+#     aggregate=1,
+#     fill="true",
+#     apply_mapping="true"
+# )
+# print("✅ Spot volume data fetching completed!")
 save_directory = "./result"
+selected_instruments = ["BTC-USDT", "ETH-USDT"]
+selected_markets = ["binance", "coinbase"]
 
-instruments_df = fetch_market_instruments(API_KEY, selected_markets, save_directory)
-print(instruments_df.head())
-
-csv_filepath = os.path.join(save_directory, "crypto_instruments.csv")
-filtered_instruments_df = load_instruments(csv_filepath)
-print(filtered_instruments_df.head())
-
-fetch_spot_volume_data(
+result_df, desc = fetch_and_aggregate_spot_volume(
     api_key=API_KEY,
-    instruments=filtered_instruments_df,
+    instruments=selected_instruments,
+    markets=selected_markets,
     save_dir=save_directory,
-    limit=2000,
-    aggregate=1,
-    fill="true",
-    apply_mapping="true"
+    time_interval="1h",
+    group_by_instrument=True
 )
-print("✅ Spot volume data fetching completed!")
+
+print(desc)
+print(result_df.head())
